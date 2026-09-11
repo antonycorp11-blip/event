@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Header } from './components/Header';
 import { RegistrationForm } from './components/RegistrationForm';
-import { AdminModal } from './components/AdminModal';
+import { AdminView } from './components/AdminView';
 import {
   fetchEvents,
   fetchNetworks,
@@ -19,14 +19,12 @@ import {
 } from './lib/supabase';
 
 export function App() {
+  const [currentScreen, setCurrentScreen] = useState('kiosk'); // 'kiosk' | 'admin'
   const [events, setEvents] = useState([]);
   const [networks, setNetworks] = useState([]);
   const [disciplers, setDisciplers] = useState([]);
   const [registrations, setRegistrations] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-
-  // Painel Administrativo
-  const [isAdminOpen, setIsAdminOpen] = useState(false);
 
   // Toast
   const [toast, setToast] = useState(null);
@@ -65,8 +63,15 @@ export function App() {
   const handleRegistrationSubmit = async (regData) => {
     const saved = await createRegistration(regData);
     setRegistrations((prev) => [saved, ...prev]);
-    showToast('Inscrição confirmada no Supabase!');
     return saved;
+  };
+
+  const handleConfirmPaymentStatus = async (id, status) => {
+    await updateRegistrationStatus(id, status);
+    setRegistrations((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, payment_status: status } : r))
+    );
+    showToast('Pagamento confirmado no Supabase!');
   };
 
   const handleDeleteRegistration = async (id) => {
@@ -123,40 +128,46 @@ export function App() {
 
   return (
     <div className="app-container">
-      {/* Topo do Quiosque com Info do Evento e Botão Admin */}
-      <Header
-        event={activeEvent}
-        attendeeCount={registrations.length}
-        onOpenAdmin={() => setIsAdminOpen(true)}
-      />
+      {currentScreen === 'kiosk' ? (
+        <>
+          {/* Topo do Quiosque com Info do Evento e Botão Admin */}
+          <Header
+            event={activeEvent}
+            attendeeCount={registrations.length}
+            onOpenAdmin={() => setCurrentScreen('admin')}
+          />
 
-      {/* O app abre DIRETO no modo inscrição rápida de atendimento */}
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-        <RegistrationForm
-          events={events}
-          networks={networks}
-          disciplers={disciplers}
-          onSubmit={handleRegistrationSubmit}
-        />
-      </main>
-
-      {/* Modal Completo de Administração */}
-      <AdminModal
-        isOpen={isAdminOpen}
-        onClose={() => setIsAdminOpen(false)}
-        registrations={registrations}
-        events={events}
-        networks={networks}
-        disciplers={disciplers}
-        onDeleteRegistration={handleDeleteRegistration}
-        onToggleStatus={handleToggleStatus}
-        onAddNetwork={handleAddNetwork}
-        onDeleteNetwork={handleDeleteNetwork}
-        onAddDiscipler={handleAddDiscipler}
-        onDeleteDiscipler={handleDeleteDiscipler}
-        onAddEvent={handleAddEvent}
-        isSupabaseConnected={isSupabaseReady()}
-      />
+          {/* O app abre DIRETO no modo inscrição rápida de atendimento */}
+          <main style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <RegistrationForm
+              events={events}
+              networks={networks}
+              disciplers={disciplers}
+              onSubmit={handleRegistrationSubmit}
+              onConfirmPaymentStatus={handleConfirmPaymentStatus}
+            />
+          </main>
+        </>
+      ) : (
+        /* Tela Completa de Administração (sem scroll preso ou modal fechado!) */
+        <main style={{ flex: 1 }}>
+          <AdminView
+            onBack={() => setCurrentScreen('kiosk')}
+            registrations={registrations}
+            events={events}
+            networks={networks}
+            disciplers={disciplers}
+            onDeleteRegistration={handleDeleteRegistration}
+            onToggleStatus={handleToggleStatus}
+            onAddNetwork={handleAddNetwork}
+            onDeleteNetwork={handleDeleteNetwork}
+            onAddDiscipler={handleAddDiscipler}
+            onDeleteDiscipler={handleDeleteDiscipler}
+            onAddEvent={handleAddEvent}
+            isSupabaseConnected={isSupabaseReady()}
+          />
+        </main>
+      )}
 
       {/* Toast Feedback */}
       {toast && (
