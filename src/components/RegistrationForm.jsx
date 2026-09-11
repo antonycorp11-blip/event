@@ -1,358 +1,601 @@
-import React, { useState, useMemo } from 'react';
-import { Calendar, User, Users, HeartHandshake, ShieldCheck, CreditCard, Send, Sparkles, MapPin } from 'lucide-react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import {
+  User,
+  Calendar,
+  Users,
+  HeartHandshake,
+  Shield,
+  CreditCard,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Sparkles,
+  Phone,
+  FastForward,
+  Check
+} from 'lucide-react';
 import { calculateAge } from '../lib/exportUtils';
 import confetti from 'canvas-confetti';
 
-const PAYMENT_METHODS = [
-  { id: 'PIX', label: 'PIX', icon: '⚡' },
-  { id: 'Cartão de Crédito', label: 'Cartão de Crédito', icon: '💳' },
-  { id: 'Cartão de Débito', label: 'Cartão de Débito', icon: '💳' },
-  { id: 'Dinheiro', label: 'Dinheiro', icon: '💵' }
+const TOTAL_STEPS = 7;
+
+const PAYMENT_OPTIONS = [
+  { id: 'PIX', label: 'PIX', icon: '⚡', subtitle: 'Pagamento instantâneo' },
+  { id: 'Cartão de Crédito', label: 'Cartão de Crédito', icon: '💳', subtitle: 'À vista ou parcelado' },
+  { id: 'Cartão de Débito', label: 'Cartão de Débito', icon: '💳', subtitle: 'Débito em conta' },
+  { id: 'Dinheiro', label: 'Dinheiro', icon: '💵', subtitle: 'Pagamento em espécie' }
 ];
 
 export const RegistrationForm = ({
   events = [],
   networks = [],
   disciplers = [],
-  onSubmit,
-  onNavigateToLists
+  onSubmit
 }) => {
-  const [selectedEventId, setSelectedEventId] = useState(events[0]?.id || '');
+  const [step, setStep] = useState(1);
   const [name, setName] = useState('');
   const [birthDate, setBirthDate] = useState('');
   const [network, setNetwork] = useState('');
-  const [leader, setLeader] = useState(''); // Líder pode ficar em branco conforme solicitado
   const [discipler, setDiscipler] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('PIX');
+  const [leader, setLeader] = useState(''); // Livre / pode ficar em branco
   const [phone, setPhone] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('');
+
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
+  const [lastRegistered, setLastRegistered] = useState(null);
 
-  // Evento selecionado
+  const nameInputRef = useRef(null);
+  const leaderInputRef = useRef(null);
+
+  // Evento ativo
   const activeEvent = useMemo(() => {
-    return events.find((e) => e.id === selectedEventId) || events[0] || {
-      name: 'Conferência Geral 2026',
-      date: 'Em breve',
-      location: 'Auditório',
-      price: 0
+    return events[0] || {
+      name: 'Conferência do Reino 2026',
+      price: 80.00
     };
-  }, [events, selectedEventId]);
+  }, [events]);
 
-  // Idade calculada dinamicamente
   const calculatedAge = useMemo(() => {
     return calculateAge(birthDate);
   }, [birthDate]);
 
-  const handleSubmit = async (e) => {
+  // Focar automaticamente no input de nome ao iniciar
+  useEffect(() => {
+    if (step === 1 && nameInputRef.current) {
+      nameInputRef.current.focus();
+    }
+  }, [step]);
+
+  // Avançar passo
+  const nextStep = () => {
+    setStep((prev) => Math.min(prev + 1, TOTAL_STEPS));
+  };
+
+  // Voltar passo
+  const prevStep = () => {
+    setStep((prev) => Math.max(prev - 1, 1));
+  };
+
+  // 1. Passo Nome
+  const handleNameSubmit = (e) => {
     e.preventDefault();
-    setErrorMessage('');
+    if (!name.trim()) return;
+    nextStep();
+  };
 
-    if (!name.trim()) {
-      setErrorMessage('Por favor, informe seu nome completo.');
-      return;
-    }
+  // 2. Passo Nascimento
+  const handleBirthDateSubmit = (e) => {
+    e.preventDefault();
+    if (!birthDate) return;
+    nextStep();
+  };
 
-    if (!birthDate) {
-      setErrorMessage('Por favor, informe sua data de nascimento.');
-      return;
-    }
+  // 3. Passo Rede (1 toque avança direto!)
+  const handleSelectNetwork = (selectedNet) => {
+    setNetwork(selectedNet);
+    setTimeout(() => {
+      setStep(4);
+    }, 180);
+  };
 
-    if (!network) {
-      setErrorMessage('Por favor, selecione sua rede.');
-      return;
-    }
+  // 4. Passo Discipulador (1 toque avança direto!)
+  const handleSelectDiscipler = (selectedDisc) => {
+    setDiscipler(selectedDisc);
+    setTimeout(() => {
+      setStep(5);
+    }, 180);
+  };
 
-    if (!discipler) {
-      setErrorMessage('Por favor, selecione seu discipulador.');
-      return;
-    }
+  // 5. Passo Líder
+  const handleLeaderSubmit = (e) => {
+    if (e) e.preventDefault();
+    nextStep();
+  };
 
+  const handleSkipLeader = () => {
+    setLeader('');
+    nextStep();
+  };
+
+  // 6. Passo WhatsApp
+  const handlePhoneSubmit = (e) => {
+    if (e) e.preventDefault();
+    nextStep();
+  };
+
+  const handleSkipPhone = () => {
+    setPhone('');
+    nextStep();
+  };
+
+  // 7. Passo Pagamento & Finalização (1 toque conclui!)
+  const handleSelectPaymentAndSubmit = async (selectedPayment) => {
+    setPaymentMethod(selectedPayment);
     setIsSubmitting(true);
 
+    const regData = {
+      event_id: activeEvent.id,
+      event_name: activeEvent.name,
+      name: name.trim(),
+      birth_date: birthDate,
+      network,
+      discipler,
+      leader: leader.trim(), // string vazia se pulado
+      payment_method: selectedPayment,
+      payment_status: 'Pendente',
+      phone: phone.trim()
+    };
+
     try {
-      const registrationData = {
-        event_id: activeEvent.id,
-        event_name: activeEvent.name,
-        name: name.trim(),
-        birth_date: birthDate,
-        network,
-        leader: leader.trim(), // Salva o que foi digitado ou string vazia (em branco)
-        discipler,
-        payment_method: paymentMethod,
-        payment_status: paymentMethod === 'PIX' ? 'Pendente' : 'Pendente',
-        phone: phone.trim()
-      };
+      const result = await onSubmit(regData);
+      setLastRegistered(result || regData);
 
-      await onSubmit(registrationData);
-
-      // Disparar confetes celebratórios
+      // Disparar confetes
       try {
         confetti({
-          particleCount: 80,
+          particleCount: 100,
           spread: 70,
           origin: { y: 0.6 }
         });
       } catch (err) {}
-
-      // Limpar formulário (preservando evento)
-      setName('');
-      setBirthDate('');
-      setNetwork('');
-      setLeader('');
-      setDiscipler('');
-      setPhone('');
     } catch (err) {
-      setErrorMessage(err.message || 'Erro ao realizar inscrição.');
-    } finally {
+      alert('Erro ao gravar inscrição: ' + (err.message || 'tente novamente.'));
       setIsSubmitting(false);
     }
   };
 
-  return (
-    <div className="glass-card" style={{ maxWidth: '640px', margin: '0 auto', width: '100%' }}>
-      <div className="form-header">
-        <h2>Inscrição para Evento</h2>
-        <p>Preencha os dados abaixo para confirmar sua presença</p>
-      </div>
+  // Resetar para o próximo atendimento relâmpago
+  const handleStartNextPerson = () => {
+    setName('');
+    setBirthDate('');
+    setNetwork('');
+    setDiscipler('');
+    setLeader('');
+    setPhone('');
+    setPaymentMethod('');
+    setLastRegistered(null);
+    setIsSubmitting(false);
+    setStep(1);
+  };
 
-      {/* Seleção do Evento Ativo */}
-      <div style={{ marginBottom: '22px' }}>
-        <label className="form-label" style={{ marginBottom: '8px' }}>
-          <span>Evento Selecionado</span>
-          {events.length > 1 && <span className="label-hint">Toque para alterar</span>}
-        </label>
-        
-        {events.length > 1 ? (
-          <select
-            className="form-select"
-            value={selectedEventId}
-            onChange={(e) => setSelectedEventId(e.target.value)}
-            style={{ marginBottom: '10px' }}
-          >
-            {events.map((evt) => (
-              <option key={evt.id} value={evt.id}>
-                {evt.name} {evt.date ? `(${evt.date})` : ''}
-              </option>
-            ))}
-          </select>
-        ) : null}
-
-        <div className="event-selector-card">
-          <div className="event-details">
-            <h3>{activeEvent.name}</h3>
-            <p>
-              {activeEvent.date && (
-                <span>
-                  <Calendar size={14} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
-                  {activeEvent.date}
-                </span>
-              )}
-              {activeEvent.location && (
-                <span>
-                  <MapPin size={14} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
-                  {activeEvent.location}
-                </span>
-              )}
-            </p>
+  // TELA DE SUCESSO RELÂMPAGO (Modo Quiosque)
+  if (lastRegistered) {
+    return (
+      <div className="wizard-card">
+        <div className="kiosk-success-view">
+          <div className="success-icon-badge">
+            <CheckCircle2 size={44} />
           </div>
-          {Number(activeEvent.price) > 0 ? (
-            <div className="event-price-badge">
-              R$ {Number(activeEvent.price).toFixed(2).replace('.', ',')}
+
+          <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.7rem', fontWeight: 800, color: '#fff', marginBottom: '6px' }}>
+            Inscrição Confirmada!
+          </h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginBottom: '22px' }}>
+            {lastRegistered.name} está inscrito(a) com sucesso.
+          </p>
+
+          <div style={{
+            background: 'rgba(15, 23, 42, 0.75)',
+            border: '1px dashed var(--border-glass)',
+            borderRadius: 'var(--radius-md)',
+            padding: '16px',
+            width: '100%',
+            maxWidth: '420px',
+            textAlign: 'left',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
+            fontSize: '0.88rem'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: 'var(--text-dim)' }}>Rede:</span>
+              <span style={{ color: '#a5b4fc', fontWeight: 700 }}>{lastRegistered.network}</span>
             </div>
-          ) : (
-            <div className="event-price-badge" style={{ color: '#6ee7b7' }}>Gratuito</div>
-          )}
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: 'var(--text-dim)' }}>Discipulador:</span>
+              <span style={{ color: '#f1f5f9', fontWeight: 600 }}>{lastRegistered.discipler}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: 'var(--text-dim)' }}>Líder:</span>
+              <span style={{ color: lastRegistered.leader ? '#f1f5f9' : 'var(--text-dim)' }}>
+                {lastRegistered.leader || '(Em branco)'}
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: 'var(--text-dim)' }}>Pagamento:</span>
+              <span style={{ color: '#34d399', fontWeight: 700 }}>{lastRegistered.payment_method}</span>
+            </div>
+          </div>
+
+          {/* BOTÃO HERO PARA ATENDER A PRÓXIMA PESSOA DA FILA */}
+          <button
+            type="button"
+            className="btn-next-person-hero"
+            onClick={handleStartNextPerson}
+          >
+            <Sparkles size={22} />
+            <span>⚡ Próxima Inscrição</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const progressPercent = Math.round((step / TOTAL_STEPS) * 100);
+
+  return (
+    <div className="wizard-card">
+      {/* Barra de Progresso Superior */}
+      <div className="progress-container">
+        <div className="progress-header">
+          <span>Passo {step} de {TOTAL_STEPS}</span>
+          <span>{progressPercent}%</span>
+        </div>
+        <div className="progress-track">
+          <div className="progress-bar" style={{ width: `${progressPercent}%` }} />
         </div>
       </div>
 
-      {errorMessage && (
-        <div style={{
-          background: 'rgba(239, 68, 68, 0.15)',
-          border: '1px solid rgba(239, 68, 68, 0.3)',
-          color: '#fca5a5',
-          padding: '12px 16px',
-          borderRadius: 'var(--radius-md)',
-          marginBottom: '20px',
-          fontSize: '0.88rem'
-        }}>
-          ⚠️ {errorMessage}
-        </div>
+      {/* ========================================================= */}
+      {/* PASSO 1: NOME COMPLETO */}
+      {/* ========================================================= */}
+      {step === 1 && (
+        <form onSubmit={handleNameSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+          <div className="step-header">
+            <div className="step-label">
+              <User size={16} />
+              <span>Identificação</span>
+            </div>
+            <h2 className="step-title">Qual é o seu nome completo?</h2>
+            <p className="step-subtitle">Digite o nome e sobrenome do participante</p>
+          </div>
+
+          <div className="wizard-input-wrap">
+            <input
+              ref={nameInputRef}
+              type="text"
+              className="wizard-input-lg"
+              placeholder="Ex: Lucas Gabriel Oliveira"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              autoComplete="name"
+              required
+            />
+          </div>
+
+          <div className="wizard-actions">
+            <button
+              type="submit"
+              className="btn-next-action"
+              disabled={!name.trim()}
+            >
+              <span>Continuar</span>
+              <ChevronRight size={20} />
+            </button>
+          </div>
+        </form>
       )}
 
-      <form onSubmit={handleSubmit} className="form-section">
-        {/* 1. Nome Completo */}
-        <div className="form-group">
-          <label className="form-label">
-            <span>Nome Completo *</span>
-          </label>
-          <input
-            type="text"
-            className="form-input"
-            placeholder="Ex: João da Silva Santos"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-            autoComplete="name"
-          />
-        </div>
+      {/* ========================================================= */}
+      {/* PASSO 2: DATA DE NASCIMENTO */}
+      {/* ========================================================= */}
+      {step === 2 && (
+        <form onSubmit={handleBirthDateSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+          <div className="step-header">
+            <div className="step-label">
+              <Calendar size={16} />
+              <span>Idade</span>
+            </div>
+            <h2 className="step-title">Qual sua data de nascimento?</h2>
+            <p className="step-subtitle">Para organizarmos as salas e faixas etárias</p>
+          </div>
 
-        {/* 2. Data de Nascimento & Idade */}
-        <div className="form-grid-2">
-          <div className="form-group">
-            <label className="form-label">
-              <span>Data de Nascimento *</span>
-            </label>
+          <div className="wizard-input-wrap">
             <input
               type="date"
-              className="form-input"
+              className="wizard-input-lg"
               value={birthDate}
               onChange={(e) => setBirthDate(e.target.value)}
               required
             />
-          </div>
-          
-          <div className="form-group">
-            <label className="form-label">
-              <span>Idade</span>
-              <span className="label-hint">Cálculo automático</span>
-            </label>
-            <input
-              type="text"
-              className="form-input"
-              value={calculatedAge}
-              readOnly
-              style={{ opacity: 0.8, cursor: 'default' }}
-            />
-          </div>
-        </div>
 
-        {/* 3. Rede (Cadastrada pelo usuário) */}
-        <div className="form-group">
-          <div className="form-label">
-            <span>Sua Rede *</span>
-            {networks.length === 0 && (
-              <button
-                type="button"
-                onClick={onNavigateToLists}
-                style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.78rem' }}
-              >
-                + Cadastrar Redes
-              </button>
+            {birthDate && (
+              <div style={{
+                marginTop: '12px',
+                background: 'rgba(99, 102, 241, 0.15)',
+                border: '1px solid rgba(99, 102, 241, 0.3)',
+                padding: '10px 14px',
+                borderRadius: 'var(--radius-sm)',
+                color: '#c7d2fe',
+                fontSize: '0.92rem',
+                fontWeight: 600,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}>
+                🎂 Idade calculada: <strong style={{ color: '#fff' }}>{calculatedAge}</strong>
+              </div>
             )}
           </div>
-          <select
-            className="form-select"
-            value={network}
-            onChange={(e) => setNetwork(e.target.value)}
-            required
-          >
-            <option value="">Selecione sua rede...</option>
-            {networks.map((net) => (
-              <option key={net.id} value={net.name}>
-                {net.name}
-              </option>
-            ))}
-          </select>
-        </div>
 
-        {/* 4. Discipulador (Cadastrado pelo usuário) */}
-        <div className="form-group">
-          <div className="form-label">
-            <span>Seu Discipulador *</span>
-            {disciplers.length === 0 && (
-              <button
-                type="button"
-                onClick={onNavigateToLists}
-                style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.78rem' }}
-              >
-                + Cadastrar Discipuladores
-              </button>
-            )}
+          <div className="wizard-actions">
+            <button type="button" className="btn-back-action" onClick={prevStep}>
+              <ChevronLeft size={20} />
+              <span>Voltar</span>
+            </button>
+
+            <button
+              type="submit"
+              className="btn-next-action"
+              disabled={!birthDate}
+            >
+              <span>Continuar</span>
+              <ChevronRight size={20} />
+            </button>
           </div>
-          <select
-            className="form-select"
-            value={discipler}
-            onChange={(e) => setDiscipler(e.target.value)}
-            required
-          >
-            <option value="">Selecione seu discipulador...</option>
-            {disciplers.map((disc) => (
-              <option key={disc.id} value={disc.name}>
-                {disc.name}
-              </option>
-            ))}
-          </select>
-        </div>
+        </form>
+      )}
 
-        {/* 5. Líder (Fica em branco conforme solicitado pelo usuário) */}
-        <div className="form-group">
-          <label className="form-label">
-            <span>Líder</span>
-            <span className="label-hint">Pode ficar em branco</span>
-          </label>
-          <input
-            type="text"
-            className="form-input"
-            placeholder="Nome do seu líder (ou deixe em branco)"
-            value={leader}
-            onChange={(e) => setLeader(e.target.value)}
-          />
-        </div>
+      {/* ========================================================= */}
+      {/* PASSO 3: REDE (1 toque avança!) */}
+      {/* ========================================================= */}
+      {step === 3 && (
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+          <div className="step-header">
+            <div className="step-label">
+              <Users size={16} />
+              <span>Comunidade</span>
+            </div>
+            <h2 className="step-title">Qual é a sua Rede?</h2>
+            <p className="step-subtitle">Toque na sua rede para avançar</p>
+          </div>
 
-        {/* 6. Telefone / WhatsApp */}
-        <div className="form-group">
-          <label className="form-label">
-            <span>WhatsApp / Celular</span>
-            <span className="label-hint">Opcional para avisos</span>
-          </label>
-          <input
-            type="tel"
-            className="form-input"
-            placeholder="(00) 00000-0000"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-          />
-        </div>
-
-        {/* 7. Forma de Pagamento */}
-        <div className="form-group">
-          <label className="form-label">
-            <span>Forma de Pagamento *</span>
-          </label>
-          <div className="chips-grid">
-            {PAYMENT_METHODS.map((method) => {
-              const isSelected = paymentMethod === method.id;
+          <div className="options-grid">
+            {networks.map((net) => {
+              const isSelected = network === net.name;
               return (
                 <button
-                  key={method.id}
+                  key={net.id}
                   type="button"
-                  className={`chip-btn ${isSelected ? 'selected' : ''}`}
-                  onClick={() => setPaymentMethod(method.id)}
+                  className={`option-card-btn ${isSelected ? 'selected' : ''}`}
+                  onClick={() => handleSelectNetwork(net.name)}
                 >
-                  <span>{method.icon}</span>
-                  <span>{method.label}</span>
+                  <span className="option-card-label">
+                    <span>{net.name}</span>
+                  </span>
+                  <div className="option-card-check">
+                    {isSelected && <Check size={14} />}
+                  </div>
                 </button>
               );
             })}
           </div>
-        </div>
 
-        {/* Botão de Envio */}
-        <button
-          type="submit"
-          className="btn-primary"
-          disabled={isSubmitting}
-        >
-          {isSubmitting ? (
-            <span>Processando Inscrição...</span>
-          ) : (
-            <>
-              <Sparkles size={18} />
-              <span>Confirmar Minha Inscrição</span>
-            </>
+          <div className="wizard-actions">
+            <button type="button" className="btn-back-action" onClick={prevStep}>
+              <ChevronLeft size={20} />
+              <span>Voltar</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* PASSO 4: DISCIPULADOR (1 toque avança!) */}
+      {/* ========================================================= */}
+      {step === 4 && (
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+          <div className="step-header">
+            <div className="step-label">
+              <HeartHandshake size={16} />
+              <span>Discipulado</span>
+            </div>
+            <h2 className="step-title">Quem é seu Discipulador?</h2>
+            <p className="step-subtitle">Selecione na lista cadastrada</p>
+          </div>
+
+          <div className="options-grid">
+            {disciplers.map((disc) => {
+              const isSelected = discipler === disc.name;
+              return (
+                <button
+                  key={disc.id}
+                  type="button"
+                  className={`option-card-btn ${isSelected ? 'selected' : ''}`}
+                  onClick={() => handleSelectDiscipler(disc.name)}
+                >
+                  <span className="option-card-label">
+                    <span>{disc.name}</span>
+                  </span>
+                  <div className="option-card-check">
+                    {isSelected && <Check size={14} />}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="wizard-actions">
+            <button type="button" className="btn-back-action" onClick={prevStep}>
+              <ChevronLeft size={20} />
+              <span>Voltar</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* PASSO 5: LÍDER (Pode ficar em branco!) */}
+      {/* ========================================================= */}
+      {step === 5 && (
+        <form onSubmit={handleLeaderSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+          <div className="step-header">
+            <div className="step-label">
+              <Shield size={16} />
+              <span>Liderança Direta</span>
+            </div>
+            <h2 className="step-title">Quem é o seu Líder?</h2>
+            <p className="step-subtitle">Pode deixar em branco caso você não tenha ou não lembre</p>
+          </div>
+
+          <div className="wizard-input-wrap">
+            <input
+              ref={leaderInputRef}
+              type="text"
+              className="wizard-input-lg"
+              placeholder="Nome do seu líder..."
+              value={leader}
+              onChange={(e) => setLeader(e.target.value)}
+            />
+
+            {/* BOTÃO RÁPIDO DE PULAR / DEIXAR EM BRANCO */}
+            <button
+              type="button"
+              className="btn-skip-action"
+              onClick={handleSkipLeader}
+            >
+              <FastForward size={18} style={{ marginRight: '6px' }} />
+              <span>Pular / Deixar em branco</span>
+            </button>
+          </div>
+
+          <div className="wizard-actions">
+            <button type="button" className="btn-back-action" onClick={prevStep}>
+              <ChevronLeft size={20} />
+              <span>Voltar</span>
+            </button>
+
+            <button
+              type="submit"
+              className="btn-next-action"
+            >
+              <span>{leader.trim() ? 'Confirmar Líder' : 'Continuar'}</span>
+              <ChevronRight size={20} />
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* ========================================================= */}
+      {/* PASSO 6: WHATSAPP / CELULAR */}
+      {/* ========================================================= */}
+      {step === 6 && (
+        <form onSubmit={handlePhoneSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+          <div className="step-header">
+            <div className="step-label">
+              <Phone size={16} />
+              <span>Contato</span>
+            </div>
+            <h2 className="step-title">Qual seu WhatsApp?</h2>
+            <p className="step-subtitle">Opcional para avisos e comprovante</p>
+          </div>
+
+          <div className="wizard-input-wrap">
+            <input
+              type="tel"
+              className="wizard-input-lg"
+              placeholder="(11) 98765-4321"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+            />
+
+            <button
+              type="button"
+              className="btn-skip-action"
+              onClick={handleSkipPhone}
+            >
+              <FastForward size={18} style={{ marginRight: '6px' }} />
+              <span>Pular sem telefone</span>
+            </button>
+          </div>
+
+          <div className="wizard-actions">
+            <button type="button" className="btn-back-action" onClick={prevStep}>
+              <ChevronLeft size={20} />
+              <span>Voltar</span>
+            </button>
+
+            <button
+              type="submit"
+              className="btn-next-action"
+            >
+              <span>Continuar</span>
+              <ChevronRight size={20} />
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* ========================================================= */}
+      {/* PASSO 7: FORMA DE PAGAMENTO (1 toque conclui a inscrição!) */}
+      {/* ========================================================= */}
+      {step === 7 && (
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+          <div className="step-header">
+            <div className="step-label">
+              <CreditCard size={16} />
+              <span>Finalização</span>
+            </div>
+            <h2 className="step-title">Forma de Pagamento</h2>
+            <p className="step-subtitle">Toque na opção desejada para concluir a inscrição</p>
+          </div>
+
+          <div className="options-grid">
+            {PAYMENT_OPTIONS.map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                className="option-card-btn"
+                style={{ minHeight: '68px' }}
+                onClick={() => handleSelectPaymentAndSubmit(opt.id)}
+                disabled={isSubmitting}
+              >
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <span className="option-card-icon">{opt.icon}</span>
+                  <div>
+                    <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#fff' }}>{opt.label}</div>
+                    <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>{opt.subtitle}</div>
+                  </div>
+                </div>
+                <ChevronRight size={18} style={{ color: 'var(--primary)' }} />
+              </button>
+            ))}
+          </div>
+
+          {isSubmitting && (
+            <div style={{ textAlign: 'center', color: '#a5b4fc', padding: '10px', fontSize: '0.95rem' }}>
+              Gravando inscrição no Supabase...
+            </div>
           )}
-        </button>
-      </form>
+
+          <div className="wizard-actions">
+            <button type="button" className="btn-back-action" onClick={prevStep} disabled={isSubmitting}>
+              <ChevronLeft size={20} />
+              <span>Voltar</span>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
