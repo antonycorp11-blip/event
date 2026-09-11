@@ -256,3 +256,59 @@ export const deleteRegistration = async (id) => {
     throw e;
   }
 };
+
+// Sincronizar qualquer dado que tenha ficado salvo localmente no celular direto para o Supabase
+export const syncLocalToCloud = async () => {
+  let synced = 0;
+  try {
+    // 1. Redes locais
+    const localNets = localStorage.getItem('event_local_networks');
+    if (localNets) {
+      const parsedNets = JSON.parse(localNets);
+      for (const net of parsedNets) {
+        if (net.name) {
+          try {
+            await supabase.from('networks').upsert([{ name: net.name.trim() }], { onConflict: 'name' });
+            synced++;
+          } catch (e) {}
+        }
+      }
+    }
+
+    // 2. Discipuladores locais
+    const localDiscs = localStorage.getItem('event_local_disciplers');
+    if (localDiscs) {
+      const parsedDiscs = JSON.parse(localDiscs);
+      for (const disc of parsedDiscs) {
+        if (disc.name) {
+          try {
+            await supabase.from('disciplers').upsert([{ name: disc.name.trim() }], { onConflict: 'name' });
+            synced++;
+          } catch (e) {}
+        }
+      }
+    }
+
+    // 3. Eventos locais
+    const localEvents = localStorage.getItem('event_local_events');
+    if (localEvents) {
+      const parsedEvents = JSON.parse(localEvents);
+      if (parsedEvents[0]) {
+        const evt = parsedEvents[0];
+        try {
+          await supabase.from('events').upsert([{
+            name: evt.name,
+            price: parseFloat(evt.price) || 0,
+            date: evt.date || null,
+            location: evt.location || null,
+            active: true
+          }]);
+          synced++;
+        } catch (e) {}
+      }
+    }
+  } catch (err) {
+    console.warn('Erro ao ler localStorage para sincronização:', err);
+  }
+  return synced;
+};

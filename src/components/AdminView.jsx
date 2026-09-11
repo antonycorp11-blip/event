@@ -16,10 +16,12 @@ import {
   ChevronUp,
   Save,
   Phone,
-  Plus
+  Plus,
+  CloudUpload
 } from 'lucide-react';
 import { exportToExcel, exportToCSV, formatDateBR, calculateAge } from '../lib/exportUtils';
 import { ListsManager } from './ListsManager';
+import { syncLocalToCloud } from '../lib/supabase';
 
 export const AdminView = ({
   onBack,
@@ -133,6 +135,24 @@ export const AdminView = ({
   const [eventLocation, setEventLocation] = useState(currentEvent.location || '');
   const [isSavingEvent, setIsSavingEvent] = useState(false);
 
+  const [isSyncing, setIsSyncing] = useState(false);
+  const handleSyncLocal = async () => {
+    setIsSyncing(true);
+    try {
+      const count = await syncLocalToCloud();
+      if (count > 0) {
+        alert(`${count} item(ns) deste aparelho foram salvos na nuvem do Supabase!`);
+        window.location.reload();
+      } else {
+        alert('Este aparelho já está 100% sincronizado com a nuvem do Supabase.');
+      }
+    } catch (err) {
+      alert('Erro ao sincronizar.');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const handleSaveEvent = async (e) => {
     e.preventDefault();
     setIsSavingEvent(true);
@@ -187,9 +207,28 @@ export const AdminView = ({
           <span>Voltar ao Atendimento</span>
         </button>
 
-        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-          Painel Admin
-        </span>
+        <button
+          type="button"
+          onClick={handleSyncLocal}
+          disabled={isSyncing}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            background: 'rgba(255, 255, 255, 0.06)',
+            border: '1px solid var(--border-glass)',
+            color: '#c7d2fe',
+            padding: '8px 12px',
+            borderRadius: 'var(--radius-full)',
+            fontWeight: 700,
+            fontSize: '0.78rem',
+            cursor: 'pointer'
+          }}
+          title="Salvar na nuvem o que foi digitado neste celular"
+        >
+          <CloudUpload size={14} />
+          <span>{isSyncing ? 'Sincronizando...' : 'Recuperar Dados deste Celular'}</span>
+        </button>
       </div>
 
       {/* Abas Horizontais Limpas */}
