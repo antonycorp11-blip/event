@@ -1,6 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Obter configurações do .env ou localStorage
+// Credenciais padrão do Supabase do projeto oficial
+const DEFAULT_SUPABASE_URL = 'https://ezzfhqyfxawjmhujffpy.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV6emZocXlmeGF3am1odWpmZnB5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkxMjExNTIsImV4cCI6MjEwNDY5NzE1Mn0.AEMcd-NCqEAge5Y6tRTqdyjLjU2jkPO3C4zaAxVdPM8';
+
+// Obter configurações do .env, localStorage ou padrão oficial
 const getSavedConfig = () => {
   try {
     const local = localStorage.getItem('event_supabase_config');
@@ -8,92 +12,21 @@ const getSavedConfig = () => {
       const parsed = JSON.parse(local);
       if (parsed.url && parsed.anonKey) return parsed;
     }
-  } catch (e) {
-    console.warn('Erro ao ler configuração do localStorage', e);
-  }
+  } catch (e) {}
 
-  const envUrl = import.meta.env.VITE_SUPABASE_URL;
-  const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  const envUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) || DEFAULT_SUPABASE_URL;
+  const envKey = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY) || DEFAULT_SUPABASE_ANON_KEY;
 
-  if (envUrl && envKey && !envUrl.includes('seu-projeto')) {
-    return { url: envUrl, anonKey: envKey };
-  }
-
-  return { url: '', anonKey: '' };
+  return {
+    url: (envUrl && !envUrl.includes('seu-projeto')) ? envUrl : DEFAULT_SUPABASE_URL,
+    anonKey: (envKey && !envKey.includes('sua-chave')) ? envKey : DEFAULT_SUPABASE_ANON_KEY
+  };
 };
 
 let currentConfig = getSavedConfig();
-let supabase = null;
+export const supabase = createClient(currentConfig.url, currentConfig.anonKey);
 
-if (currentConfig.url && currentConfig.anonKey) {
-  try {
-    supabase = createClient(currentConfig.url, currentConfig.anonKey);
-  } catch (e) {
-    console.error('Erro ao instanciar Supabase:', e);
-  }
-}
-
-// Armazenamento local (fallback e inicialização)
-const LOCAL_STORAGE_KEYS = {
-  REGISTRATIONS: 'event_local_registrations',
-  EVENTS: 'event_local_events',
-  NETWORKS: 'event_local_networks',
-  DISCIPLERS: 'event_local_disciplers'
-};
-
-const defaultEvents = [
-  {
-    id: 'evt-1',
-    name: 'Conferência do Reino 2026',
-    date: '14 a 16 de Novembro',
-    location: 'Auditório Principal',
-    price: 80.00,
-    active: true
-  },
-  {
-    id: 'evt-2',
-    name: 'Acampamento de Jovens - Conectados',
-    date: '10 a 12 de Outubro',
-    location: 'Sítio Recanto das Águas',
-    price: 150.00,
-    active: true
-  }
-];
-
-const defaultNetworks = [
-  { id: 'net-1', name: 'Jovens' },
-  { id: 'net-2', name: 'Teens' },
-  { id: 'net-3', name: 'Casais' },
-  { id: 'net-4', name: 'Mulheres' },
-  { id: 'net-5', name: 'Homens' },
-  { id: 'net-6', name: 'Kids' }
-];
-
-const defaultDisciplers = [
-  { id: 'disc-1', name: 'Pastor Marcos' },
-  { id: 'disc-2', name: 'Pastora Helena' },
-  { id: 'disc-3', name: 'Diácono Carlos' },
-  { id: 'disc-4', name: 'Líder Mariana' }
-];
-
-// Helper para ler do localStorage com fallback padrão
-const getLocalData = (key, defaults) => {
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw) return JSON.parse(raw);
-  } catch (e) {}
-  localStorage.setItem(key, JSON.stringify(defaults));
-  return defaults;
-};
-
-// Helper para salvar no localStorage
-const setLocalData = (key, data) => {
-  try {
-    localStorage.setItem(key, JSON.stringify(data));
-  } catch (e) {}
-};
-
-// Testar conexão com o Supabase
+// Testar conexão
 export const testSupabaseConnection = async (url, anonKey) => {
   try {
     const testClient = createClient(url, anonKey);
@@ -107,15 +40,9 @@ export const testSupabaseConnection = async (url, anonKey) => {
   }
 };
 
-// Salvar novas credenciais e recriar cliente
 export const saveSupabaseConfig = (url, anonKey) => {
   localStorage.setItem('event_supabase_config', JSON.stringify({ url, anonKey }));
   currentConfig = { url, anonKey };
-  if (url && anonKey) {
-    supabase = createClient(url, anonKey);
-  } else {
-    supabase = null;
-  }
 };
 
 export const getSupabaseConfig = () => currentConfig;
@@ -123,217 +50,209 @@ export const getSupabaseConfig = () => currentConfig;
 export const isSupabaseReady = () => !!supabase;
 
 // ==========================================
-// FUNÇÕES DE EVENTOS
+// FUNÇÕES DE EVENTOS (SINCRONIZAÇÃO NUVEM)
 // ==========================================
 export const fetchEvents = async () => {
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('events')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (!error && data) return data;
-    } catch (e) {
-      console.warn('Erro ao buscar eventos no Supabase, usando local:', e);
-    }
+  try {
+    const { data, error } = await supabase
+      .from('events')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    if (data && data.length > 0) return data;
+  } catch (e) {
+    console.error('Erro ao buscar eventos no Supabase:', e);
   }
-  return getLocalData(LOCAL_STORAGE_KEYS.EVENTS, defaultEvents);
+  return [];
 };
 
 export const addEvent = async (event) => {
-  const newEvent = {
-    ...event,
-    id: event.id || crypto.randomUUID(),
-    created_at: new Date().toISOString()
+  const payload = {
+    name: event.name.trim(),
+    price: parseFloat(event.price) || 0,
+    date: event.date ? event.date.trim() : null,
+    location: event.location ? event.location.trim() : null,
+    active: true
   };
 
-  if (supabase) {
-    try {
-      const { data, error } = await supabase.from('events').insert([newEvent]).select();
-      if (!error && data?.[0]) return data[0];
-    } catch (e) {
-      console.error('Erro ao adicionar evento no Supabase:', e);
-    }
+  if (event.id) {
+    payload.id = event.id;
   }
 
-  const local = getLocalData(LOCAL_STORAGE_KEYS.EVENTS, defaultEvents);
-  const updated = [newEvent, ...local];
-  setLocalData(LOCAL_STORAGE_KEYS.EVENTS, updated);
-  return newEvent;
+  try {
+    const { data, error } = await supabase
+      .from('events')
+      .upsert([payload], { onConflict: 'id' })
+      .select();
+
+    if (error) throw error;
+    if (data?.[0]) return data[0];
+  } catch (e) {
+    console.error('Erro ao salvar evento no Supabase:', e);
+    throw e;
+  }
+  return { ...payload, id: event.id || 'temp-id' };
 };
 
 // ==========================================
-// FUNÇÕES DE REDES (Cadastradas pelo usuário)
+// FUNÇÕES DE REDES (SINCRONIZAÇÃO NUVEM)
 // ==========================================
 export const fetchNetworks = async () => {
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('networks')
-        .select('*')
-        .order('name', { ascending: true });
-      if (!error && data) return data;
-    } catch (e) {
-      console.warn('Erro ao buscar redes no Supabase, usando local:', e);
-    }
+  try {
+    const { data, error } = await supabase
+      .from('networks')
+      .select('*')
+      .order('name', { ascending: true });
+    if (error) throw error;
+    if (data) return data;
+  } catch (e) {
+    console.error('Erro ao buscar redes no Supabase:', e);
   }
-  return getLocalData(LOCAL_STORAGE_KEYS.NETWORKS, defaultNetworks);
+  return [];
 };
 
 export const addNetwork = async (name) => {
-  const item = { id: crypto.randomUUID(), name: name.trim(), created_at: new Date().toISOString() };
-  if (supabase) {
-    try {
-      const { data, error } = await supabase.from('networks').insert([item]).select();
-      if (!error && data?.[0]) return data[0];
-    } catch (e) {
-      console.error('Erro ao adicionar rede no Supabase:', e);
-    }
+  const trimmed = name.trim();
+  try {
+    const { data, error } = await supabase
+      .from('networks')
+      .insert([{ name: trimmed }])
+      .select();
+
+    if (error) throw error;
+    if (data?.[0]) return data[0];
+  } catch (e) {
+    console.error('Erro ao adicionar rede no Supabase:', e);
+    throw e;
   }
-  const local = getLocalData(LOCAL_STORAGE_KEYS.NETWORKS, defaultNetworks);
-  const updated = [...local, item];
-  setLocalData(LOCAL_STORAGE_KEYS.NETWORKS, updated);
-  return item;
+  return { id: Math.random().toString(), name: trimmed };
 };
 
 export const deleteNetwork = async (id) => {
-  if (supabase) {
-    try {
-      await supabase.from('networks').delete().eq('id', id);
-    } catch (e) {
-      console.error('Erro ao deletar rede no Supabase:', e);
-    }
+  try {
+    const { error } = await supabase.from('networks').delete().eq('id', id);
+    if (error) throw error;
+  } catch (e) {
+    console.error('Erro ao deletar rede no Supabase:', e);
+    throw e;
   }
-  const local = getLocalData(LOCAL_STORAGE_KEYS.NETWORKS, defaultNetworks);
-  const updated = local.filter((n) => n.id !== id);
-  setLocalData(LOCAL_STORAGE_KEYS.NETWORKS, updated);
 };
 
 // ==========================================
-// FUNÇÕES DE DISCIPULADORES (Cadastrados pelo usuário)
+// FUNÇÕES DE DISCIPULADORES (SINCRONIZAÇÃO NUVEM)
 // ==========================================
 export const fetchDisciplers = async () => {
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('disciplers')
-        .select('*')
-        .order('name', { ascending: true });
-      if (!error && data) return data;
-    } catch (e) {
-      console.warn('Erro ao buscar discipuladores no Supabase, usando local:', e);
-    }
+  try {
+    const { data, error } = await supabase
+      .from('disciplers')
+      .select('*')
+      .order('name', { ascending: true });
+    if (error) throw error;
+    if (data) return data;
+  } catch (e) {
+    console.error('Erro ao buscar discipuladores no Supabase:', e);
   }
-  return getLocalData(LOCAL_STORAGE_KEYS.DISCIPLERS, defaultDisciplers);
+  return [];
 };
 
 export const addDiscipler = async (name) => {
-  const item = { id: crypto.randomUUID(), name: name.trim(), created_at: new Date().toISOString() };
-  if (supabase) {
-    try {
-      const { data, error } = await supabase.from('disciplers').insert([item]).select();
-      if (!error && data?.[0]) return data[0];
-    } catch (e) {
-      console.error('Erro ao adicionar discipulador no Supabase:', e);
-    }
+  const trimmed = name.trim();
+  try {
+    const { data, error } = await supabase
+      .from('disciplers')
+      .insert([{ name: trimmed }])
+      .select();
+
+    if (error) throw error;
+    if (data?.[0]) return data[0];
+  } catch (e) {
+    console.error('Erro ao adicionar discipulador no Supabase:', e);
+    throw e;
   }
-  const local = getLocalData(LOCAL_STORAGE_KEYS.DISCIPLERS, defaultDisciplers);
-  const updated = [...local, item];
-  setLocalData(LOCAL_STORAGE_KEYS.DISCIPLERS, updated);
-  return item;
+  return { id: Math.random().toString(), name: trimmed };
 };
 
 export const deleteDiscipler = async (id) => {
-  if (supabase) {
-    try {
-      await supabase.from('disciplers').delete().eq('id', id);
-    } catch (e) {
-      console.error('Erro ao deletar discipulador no Supabase:', e);
-    }
+  try {
+    const { error } = await supabase.from('disciplers').delete().eq('id', id);
+    if (error) throw error;
+  } catch (e) {
+    console.error('Erro ao deletar discipulador no Supabase:', e);
+    throw e;
   }
-  const local = getLocalData(LOCAL_STORAGE_KEYS.DISCIPLERS, defaultDisciplers);
-  const updated = local.filter((d) => d.id !== id);
-  setLocalData(LOCAL_STORAGE_KEYS.DISCIPLERS, updated);
 };
 
 // ==========================================
-// FUNÇÕES DE INSCRIÇÕES
+// FUNÇÕES DE INSCRIÇÕES (SINCRONIZAÇÃO NUVEM)
 // ==========================================
 export const fetchRegistrations = async () => {
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('registrations')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (!error && data) return data;
-    } catch (e) {
-      console.warn('Erro ao buscar inscrições no Supabase, usando local:', e);
-    }
+  try {
+    const { data, error } = await supabase
+      .from('registrations')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    if (data) return data;
+  } catch (e) {
+    console.error('Erro ao buscar inscrições no Supabase:', e);
   }
-  return getLocalData(LOCAL_STORAGE_KEYS.REGISTRATIONS, []);
+  return [];
 };
 
 export const createRegistration = async (registration) => {
-  const newRegistration = {
-    ...registration,
-    id: registration.id || crypto.randomUUID(),
-    created_at: new Date().toISOString()
+  const payload = {
+    event_name: registration.event_name,
+    name: registration.name.trim(),
+    birth_date: registration.birth_date,
+    network: registration.network,
+    leader: registration.leader ? registration.leader.trim() : '',
+    discipler: registration.discipler,
+    payment_method: registration.payment_method,
+    payment_status: registration.payment_status || 'Pendente',
+    phone: registration.phone ? registration.phone.trim() : ''
   };
 
-  // Se o Supabase estiver conectado, salvar diretamente nele
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('registrations')
-        .insert([newRegistration])
-        .select();
-
-      if (error) {
-        console.error('Erro ao salvar no Supabase:', error);
-        throw error;
-      }
-      if (data?.[0]) {
-        // Atualiza também o cache local
-        const local = getLocalData(LOCAL_STORAGE_KEYS.REGISTRATIONS, []);
-        setLocalData(LOCAL_STORAGE_KEYS.REGISTRATIONS, [data[0], ...local]);
-        return data[0];
-      }
-    } catch (e) {
-      console.error('Falha de inserção Supabase, gravando em fallback local:', e);
-      // fallback abaixo
-    }
+  if (registration.event_id) {
+    payload.event_id = registration.event_id;
   }
 
-  // Gravação local (fallback ou modo local)
-  const local = getLocalData(LOCAL_STORAGE_KEYS.REGISTRATIONS, []);
-  const updated = [newRegistration, ...local];
-  setLocalData(LOCAL_STORAGE_KEYS.REGISTRATIONS, updated);
-  return newRegistration;
+  try {
+    const { data, error } = await supabase
+      .from('registrations')
+      .insert([payload])
+      .select();
+
+    if (error) throw error;
+    if (data?.[0]) return data[0];
+  } catch (e) {
+    console.error('Erro ao salvar inscrição no Supabase:', e);
+    throw e;
+  }
+  return { ...payload, id: Math.random().toString() };
 };
 
 export const updateRegistrationStatus = async (id, status) => {
-  if (supabase) {
-    try {
-      await supabase.from('registrations').update({ payment_status: status }).eq('id', id);
-    } catch (e) {
-      console.error('Erro ao atualizar status no Supabase:', e);
-    }
+  try {
+    const { error } = await supabase
+      .from('registrations')
+      .update({ payment_status: status })
+      .eq('id', id);
+    if (error) throw error;
+  } catch (e) {
+    console.error('Erro ao atualizar status no Supabase:', e);
+    throw e;
   }
-  const local = getLocalData(LOCAL_STORAGE_KEYS.REGISTRATIONS, []);
-  const updated = local.map((r) => (r.id === id ? { ...r, payment_status: status } : r));
-  setLocalData(LOCAL_STORAGE_KEYS.REGISTRATIONS, updated);
 };
 
 export const deleteRegistration = async (id) => {
-  if (supabase) {
-    try {
-      await supabase.from('registrations').delete().eq('id', id);
-    } catch (e) {
-      console.error('Erro ao deletar inscrição no Supabase:', e);
-    }
+  try {
+    const { error } = await supabase
+      .from('registrations')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
+  } catch (e) {
+    console.error('Erro ao deletar inscrição no Supabase:', e);
+    throw e;
   }
-  const local = getLocalData(LOCAL_STORAGE_KEYS.REGISTRATIONS, []);
-  const updated = local.filter((r) => r.id !== id);
-  setLocalData(LOCAL_STORAGE_KEYS.REGISTRATIONS, updated);
 };
