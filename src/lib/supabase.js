@@ -132,7 +132,7 @@ export const fetchEvents = async () => {
         .from('events')
         .select('*')
         .order('created_at', { ascending: false });
-      if (!error && data && data.length > 0) return data;
+      if (!error && data) return data;
     } catch (e) {
       console.warn('Erro ao buscar eventos no Supabase, usando local:', e);
     }
@@ -172,7 +172,7 @@ export const fetchNetworks = async () => {
         .from('networks')
         .select('*')
         .order('name', { ascending: true });
-      if (!error && data && data.length > 0) return data;
+      if (!error && data) return data;
     } catch (e) {
       console.warn('Erro ao buscar redes no Supabase, usando local:', e);
     }
@@ -219,7 +219,7 @@ export const fetchDisciplers = async () => {
         .from('disciplers')
         .select('*')
         .order('name', { ascending: true });
-      if (!error && data && data.length > 0) return data;
+      if (!error && data) return data;
     } catch (e) {
       console.warn('Erro ao buscar discipuladores no Supabase, usando local:', e);
     }
