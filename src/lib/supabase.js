@@ -271,64 +271,7 @@ export const fetchRegistrations = async () => {
       console.warn('Erro ao buscar inscrições no Supabase, usando local:', e);
     }
   }
-  return getLocalData(LOCAL_STORAGE_KEYS.REGISTRATIONS, [
-    {
-      id: 'reg-sample-1',
-      event_id: 'evt-1',
-      event_name: 'Conferência do Reino 2026',
-      name: 'Lucas Gabriel Silveira',
-      birth_date: '1998-05-14',
-      network: 'Jovens',
-      leader: 'Felipe Santos',
-      discipler: 'Pastor Marcos',
-      payment_method: 'PIX',
-      payment_status: 'Confirmado',
-      phone: '(11) 98765-4321',
-      created_at: new Date(Date.now() - 3600000 * 5).toISOString()
-    },
-    {
-      id: 'reg-sample-2',
-      event_id: 'evt-1',
-      event_name: 'Conferência do Reino 2026',
-      name: 'Beatriz Costa Mendes',
-      birth_date: '2004-11-20',
-      network: 'Jovens',
-      leader: 'Amanda Oliveira',
-      discipler: 'Pastora Helena',
-      payment_method: 'Cartão de Crédito',
-      payment_status: 'Confirmado',
-      phone: '(11) 97654-3210',
-      created_at: new Date(Date.now() - 3600000 * 12).toISOString()
-    },
-    {
-      id: 'reg-sample-3',
-      event_id: 'evt-1',
-      event_name: 'Conferência do Reino 2026',
-      name: 'Rodrigo & Camila Alencar',
-      birth_date: '1989-02-18',
-      network: 'Casais',
-      leader: '', // Líder em branco conforme requisito!
-      discipler: 'Diácono Carlos',
-      payment_method: 'PIX',
-      payment_status: 'Confirmado',
-      phone: '(11) 96543-2109',
-      created_at: new Date(Date.now() - 3600000 * 24).toISOString()
-    },
-    {
-      id: 'reg-sample-4',
-      event_id: 'evt-2',
-      event_name: 'Acampamento de Jovens - Conectados',
-      name: 'Guilherme Augusto',
-      birth_date: '2006-08-03',
-      network: 'Teens',
-      leader: 'Matheus Lima',
-      discipler: 'Líder Mariana',
-      payment_method: 'Dinheiro',
-      payment_status: 'Pendente',
-      phone: '(11) 95432-1098',
-      created_at: new Date(Date.now() - 3600000 * 30).toISOString()
-    }
-  ]);
+  return getLocalData(LOCAL_STORAGE_KEYS.REGISTRATIONS, []);
 };
 
 export const createRegistration = async (registration) => {

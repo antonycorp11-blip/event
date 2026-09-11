@@ -1,7 +1,7 @@
 :root {
   --bg-main: #090d16;
   --bg-surface: #0f172a;
-  --bg-card: rgba(15, 23, 42, 0.8);
+  --bg-card: rgba(15, 23, 42, 0.85);
   --bg-input: #1e293b;
   
   --border-subtle: rgba(255, 255, 255, 0.08);
@@ -56,7 +56,7 @@ body {
 
 /* App Container */
 .app-container {
-  max-width: 680px;
+  max-width: 580px;
   margin: 0 auto;
   padding: 12px 14px calc(24px + var(--safe-bottom)) 14px;
   min-height: 100vh;
@@ -76,7 +76,7 @@ body {
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--border-glass);
   border-radius: var(--radius-lg);
-  margin-bottom: 16px;
+  margin-bottom: 14px;
   box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.5);
 }
 
@@ -95,12 +95,12 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 240px;
+  max-width: 220px;
 }
 
 @media (min-width: 480px) {
   .event-title-line {
-    max-width: 380px;
+    max-width: 360px;
     font-size: 1.15rem;
   }
 }
@@ -165,24 +165,22 @@ body {
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--border-glass);
   border-radius: var(--radius-lg);
-  padding: 22px 18px 24px 18px;
+  padding: 20px 18px 22px 18px;
   box-shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.6);
   display: flex;
   flex-direction: column;
-  flex: 1;
   position: relative;
-  min-height: 480px;
 }
 
 @media (min-width: 480px) {
   .wizard-card {
-    padding: 32px 28px;
+    padding: 26px 24px;
   }
 }
 
 /* Step Progress Indicator */
 .progress-container {
-  margin-bottom: 22px;
+  margin-bottom: 18px;
 }
 
 .progress-header {
@@ -190,7 +188,7 @@ body {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 8px;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 700;
   color: var(--text-muted);
 }
@@ -212,24 +210,24 @@ body {
 
 /* Step Question Header */
 .step-header {
-  margin-bottom: 24px;
+  margin-bottom: 18px;
 }
 
 .step-label {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.8px;
   color: #818cf8;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .step-title {
   font-family: var(--font-heading);
-  font-size: 1.45rem;
+  font-size: 1.4rem;
   font-weight: 800;
   line-height: 1.25;
   color: #fff;
@@ -238,40 +236,41 @@ body {
 
 @media (min-width: 480px) {
   .step-title {
-    font-size: 1.7rem;
+    font-size: 1.6rem;
   }
 }
 
 .step-subtitle {
-  font-size: 0.88rem;
+  font-size: 0.85rem;
   color: var(--text-muted);
   margin-top: 4px;
 }
 
 /* Inputs for Wizard */
 .wizard-input-wrap {
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 
 .wizard-input-lg {
   width: 100%;
   background: var(--bg-input);
-  border: 2px solid rgba(255, 255, 255, 0.1);
+  border: 2px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius-md);
   padding: 16px 18px;
-  font-size: 1.15rem;
+  font-size: 1.25rem;
   font-family: var(--font-body);
-  font-weight: 600;
+  font-weight: 700;
   color: #fff;
   transition: all 0.2s ease;
-  min-height: 56px;
+  min-height: 58px;
+  letter-spacing: 0.5px;
 }
 
 .wizard-input-lg:focus {
   outline: none;
   border-color: var(--primary);
   box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.25);
-  background: rgba(30, 41, 59, 0.95);
+  background: rgba(30, 41, 59, 0.98);
 }
 
 .wizard-input-lg::placeholder {
@@ -284,7 +283,7 @@ body {
   display: grid;
   grid-template-columns: 1fr;
   gap: 10px;
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 
 @media (min-width: 440px) {
@@ -298,22 +297,22 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 16px 18px;
-  background: rgba(30, 41, 59, 0.6);
+  background: rgba(30, 41, 59, 0.7);
   border: 2px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-md);
   color: #f1f5f9;
-  font-size: 1rem;
+  font-size: 1.05rem;
   font-weight: 700;
   font-family: var(--font-body);
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  min-height: 58px;
+  min-height: 60px;
   text-align: left;
 }
 
 .option-card-btn:hover {
-  background: rgba(49, 46, 129, 0.3);
-  border-color: rgba(99, 102, 241, 0.4);
+  background: rgba(49, 46, 129, 0.35);
+  border-color: rgba(99, 102, 241, 0.5);
   transform: translateY(-1px);
 }
 
@@ -329,7 +328,7 @@ body {
 }
 
 .option-card-icon {
-  font-size: 1.3rem;
+  font-size: 1.4rem;
   margin-right: 12px;
   flex-shrink: 0;
 }
@@ -342,8 +341,8 @@ body {
 }
 
 .option-card-check {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   border: 2px solid rgba(255, 255, 255, 0.2);
   display: flex;
@@ -358,39 +357,38 @@ body {
   color: white;
 }
 
-/* Wizard Navigation Buttons */
+/* Wizard Navigation Buttons - POSITIONED RIGHT BELOW INPUT! */
 .wizard-actions {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-top: auto;
-  padding-top: 16px;
+  margin-top: 6px;
 }
 
 .btn-next-action {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 8px;
   flex: 1;
-  padding: 16px 22px;
+  padding: 16px 20px;
   border-radius: var(--radius-md);
   border: none;
   background: var(--primary-gradient);
   color: white;
-  font-size: 1.05rem;
-  font-weight: 700;
+  font-size: 1.1rem;
+  font-weight: 800;
   font-family: var(--font-heading);
   letter-spacing: 0.3px;
   cursor: pointer;
-  box-shadow: 0 8px 25px rgba(99, 102, 241, 0.4);
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.45);
   transition: all 0.2s ease;
   min-height: 56px;
 }
 
 .btn-next-action:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 10px 30px rgba(99, 102, 241, 0.6);
+  box-shadow: 0 10px 28px rgba(99, 102, 241, 0.6);
 }
 
 .btn-next-action:active:not(:disabled) {
@@ -398,21 +396,22 @@ body {
 }
 
 .btn-next-action:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 .btn-back-action {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 4px;
   padding: 14px 18px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-subtle);
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-muted);
-  font-size: 0.92rem;
+  font-size: 0.95rem;
   font-weight: 700;
   cursor: pointer;
   min-height: 56px;
@@ -431,11 +430,11 @@ body {
   width: 100%;
   padding: 14px;
   border-radius: var(--radius-md);
-  border: 1px dashed rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--text-muted);
+  border: 1px dashed rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.04);
+  color: #c7d2fe;
   font-size: 0.95rem;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   margin-top: 10px;
   transition: all 0.2s ease;
@@ -444,7 +443,7 @@ body {
 
 .btn-skip-action:hover {
   background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.35);
+  border-color: rgba(255, 255, 255, 0.4);
   color: #fff;
 }
 
@@ -455,13 +454,12 @@ body {
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 24px 10px;
-  flex: 1;
+  padding: 20px 8px;
 }
 
 .success-icon-badge {
-  width: 76px;
-  height: 76px;
+  width: 72px;
+  height: 72px;
   border-radius: 50%;
   background: rgba(16, 185, 129, 0.18);
   color: #34d399;
@@ -469,7 +467,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 18px;
+  margin-bottom: 16px;
   animation: pulseSuccess 2s infinite;
 }
 
@@ -498,7 +496,7 @@ body {
   box-shadow: 0 10px 30px rgba(99, 102, 241, 0.5);
   transition: all 0.25s ease;
   min-height: 62px;
-  margin-top: 24px;
+  margin-top: 20px;
 }
 
 .btn-next-person-hero:hover {

@@ -1,28 +1,38 @@
 import * as XLSX from 'xlsx';
 
-// Calcular idade a partir da data de nascimento
+// Calcular idade a partir da data de nascimento (suporta DD/MM/AAAA e YYYY-MM-DD)
 export const calculateAge = (birthDateString) => {
   if (!birthDateString) return '-';
+  let birth;
+  if (typeof birthDateString === 'string' && birthDateString.includes('/')) {
+    const parts = birthDateString.split('/');
+    if (parts.length === 3 && parts[2].length === 4) {
+      birth = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+    }
+  } else {
+    birth = new Date(birthDateString);
+  }
+  if (!birth || isNaN(birth.getTime())) return '-';
   const today = new Date();
-  const birth = new Date(birthDateString);
   let age = today.getFullYear() - birth.getFullYear();
   const m = today.getMonth() - birth.getMonth();
   if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
     age--;
   }
-  return isNaN(age) ? '-' : `${age} anos`;
+  return isNaN(age) || age < 0 || age > 125 ? '-' : `${age} anos`;
 };
 
 // Formatar data para exibição brasileira
-export const formatDateBR = (isoString) => {
-  if (!isoString) return '-';
+export const formatDateBR = (dateString) => {
+  if (!dateString) return '-';
+  if (typeof dateString === 'string' && dateString.includes('/')) return dateString;
   try {
-    const parts = isoString.split('T')[0].split('-');
+    const parts = String(dateString).split('T')[0].split('-');
     if (parts.length === 3) {
       return `${parts[2]}/${parts[1]}/${parts[0]}`;
     }
   } catch (e) {}
-  return isoString;
+  return dateString;
 };
 
 // Preparar os dados para exportação

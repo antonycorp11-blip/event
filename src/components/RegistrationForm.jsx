@@ -34,7 +34,7 @@ export const RegistrationForm = ({
 }) => {
   const [step, setStep] = useState(1);
   const [name, setName] = useState('');
-  const [birthDate, setBirthDate] = useState('');
+  const [birthDate, setBirthDate] = useState(''); // Armazenado como DD/MM/AAAA
   const [network, setNetwork] = useState('');
   const [discipler, setDiscipler] = useState('');
   const [leader, setLeader] = useState(''); // Livre / pode ficar em branco
@@ -45,6 +45,7 @@ export const RegistrationForm = ({
   const [lastRegistered, setLastRegistered] = useState(null);
 
   const nameInputRef = useRef(null);
+  const birthInputRef = useRef(null);
   const leaderInputRef = useRef(null);
 
   // Evento ativo
@@ -59,38 +60,78 @@ export const RegistrationForm = ({
     return calculateAge(birthDate);
   }, [birthDate]);
 
-  // Focar automaticamente no input de nome ao iniciar
+  // Validação da data digitada
+  const isBirthDateValid = useMemo(() => {
+    if (!birthDate || birthDate.length !== 10) return false;
+    const parts = birthDate.split('/');
+    if (parts.length !== 3) return false;
+    const day = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10);
+    const year = parseInt(parts[2], 10);
+    if (day < 1 || day > 31) return false;
+    if (month < 1 || month > 12) return false;
+    if (year < 1920 || year > new Date().getFullYear()) return false;
+    return true;
+  }, [birthDate]);
+
+  // Focar no input correto ao mudar de passo
   useEffect(() => {
     if (step === 1 && nameInputRef.current) {
       nameInputRef.current.focus();
+    } else if (step === 2 && birthInputRef.current) {
+      birthInputRef.current.focus();
+    } else if (step === 5 && leaderInputRef.current) {
+      leaderInputRef.current.focus();
     }
   }, [step]);
 
-  // Avançar passo
+  // Máscara de digitação da Data de Nascimento (DD/MM/AAAA)
+  const handleBirthDateChange = (e) => {
+    const raw = e.target.value.replace(/\D/g, ''); // apenas números
+    let formatted = raw;
+    if (raw.length > 2 && raw.length <= 4) {
+      formatted = `${raw.slice(0, 2)}/${raw.slice(2)}`;
+    } else if (raw.length > 4) {
+      formatted = `${raw.slice(0, 2)}/${raw.slice(2, 4)}/${raw.slice(4, 8)}`;
+    }
+    setBirthDate(formatted);
+  };
+
+  // Máscara de Telefone
+  const handlePhoneChange = (e) => {
+    const raw = e.target.value.replace(/\D/g, '');
+    let formatted = raw;
+    if (raw.length > 2 && raw.length <= 7) {
+      formatted = `(${raw.slice(0, 2)}) ${raw.slice(2)}`;
+    } else if (raw.length > 7) {
+      formatted = `(${raw.slice(0, 2)}) ${raw.slice(2, 7)}-${raw.slice(7, 11)}`;
+    }
+    setPhone(formatted);
+  };
+
   const nextStep = () => {
     setStep((prev) => Math.min(prev + 1, TOTAL_STEPS));
   };
 
-  // Voltar passo
   const prevStep = () => {
     setStep((prev) => Math.max(prev - 1, 1));
   };
 
-  // 1. Passo Nome
+  // 1. Nome
   const handleNameSubmit = (e) => {
     e.preventDefault();
     if (!name.trim()) return;
     nextStep();
   };
 
-  // 2. Passo Nascimento
+  // 2. Data de Nascimento
   const handleBirthDateSubmit = (e) => {
     e.preventDefault();
-    if (!birthDate) return;
+    if (!isBirthDateValid) return;
     nextStep();
   };
 
-  // 3. Passo Rede (1 toque avança direto!)
+  // 3. Rede (1 toque avança!)
   const handleSelectNetwork = (selectedNet) => {
     setNetwork(selectedNet);
     setTimeout(() => {
@@ -98,7 +139,7 @@ export const RegistrationForm = ({
     }, 180);
   };
 
-  // 4. Passo Discipulador (1 toque avança direto!)
+  // 4. Discipulador (1 toque avança!)
   const handleSelectDiscipler = (selectedDisc) => {
     setDiscipler(selectedDisc);
     setTimeout(() => {
@@ -106,7 +147,7 @@ export const RegistrationForm = ({
     }, 180);
   };
 
-  // 5. Passo Líder
+  // 5. Líder
   const handleLeaderSubmit = (e) => {
     if (e) e.preventDefault();
     nextStep();
@@ -117,7 +158,7 @@ export const RegistrationForm = ({
     nextStep();
   };
 
-  // 6. Passo WhatsApp
+  // 6. WhatsApp
   const handlePhoneSubmit = (e) => {
     if (e) e.preventDefault();
     nextStep();
@@ -128,19 +169,28 @@ export const RegistrationForm = ({
     nextStep();
   };
 
-  // 7. Passo Pagamento & Finalização (1 toque conclui!)
+  // 7. Pagamento & Finalização
   const handleSelectPaymentAndSubmit = async (selectedPayment) => {
     setPaymentMethod(selectedPayment);
     setIsSubmitting(true);
+
+    // Formatar data para YYYY-MM-DD para o Postgres
+    let isoDate = birthDate;
+    if (birthDate.includes('/')) {
+      const parts = birthDate.split('/');
+      if (parts.length === 3) {
+        isoDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+      }
+    }
 
     const regData = {
       event_id: activeEvent.id,
       event_name: activeEvent.name,
       name: name.trim(),
-      birth_date: birthDate,
+      birth_date: isoDate,
       network,
       discipler,
-      leader: leader.trim(), // string vazia se pulado
+      leader: leader.trim(), // fica em branco se não informado
       payment_method: selectedPayment,
       payment_status: 'Pendente',
       phone: phone.trim()
@@ -150,7 +200,6 @@ export const RegistrationForm = ({
       const result = await onSubmit(regData);
       setLastRegistered(result || regData);
 
-      // Disparar confetes
       try {
         confetti({
           particleCount: 100,
@@ -164,7 +213,7 @@ export const RegistrationForm = ({
     }
   };
 
-  // Resetar para o próximo atendimento relâmpago
+  // Reset para atender próximo da fila
   const handleStartNextPerson = () => {
     setName('');
     setBirthDate('');
@@ -178,34 +227,34 @@ export const RegistrationForm = ({
     setStep(1);
   };
 
-  // TELA DE SUCESSO RELÂMPAGO (Modo Quiosque)
+  // TELA DE SUCESSO RELÂMPAGO
   if (lastRegistered) {
     return (
       <div className="wizard-card">
         <div className="kiosk-success-view">
           <div className="success-icon-badge">
-            <CheckCircle2 size={44} />
+            <CheckCircle2 size={42} />
           </div>
 
-          <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.7rem', fontWeight: 800, color: '#fff', marginBottom: '6px' }}>
+          <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.6rem', fontWeight: 800, color: '#fff', marginBottom: '4px' }}>
             Inscrição Confirmada!
           </h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginBottom: '22px' }}>
-            {lastRegistered.name} está inscrito(a) com sucesso.
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginBottom: '18px' }}>
+            {lastRegistered.name} salvo(a) no banco de dados.
           </p>
 
           <div style={{
             background: 'rgba(15, 23, 42, 0.75)',
             border: '1px dashed var(--border-glass)',
             borderRadius: 'var(--radius-md)',
-            padding: '16px',
+            padding: '14px 16px',
             width: '100%',
-            maxWidth: '420px',
+            maxWidth: '380px',
             textAlign: 'left',
             display: 'flex',
             flexDirection: 'column',
             gap: '8px',
-            fontSize: '0.88rem'
+            fontSize: '0.86rem'
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ color: 'var(--text-dim)' }}>Rede:</span>
@@ -227,13 +276,12 @@ export const RegistrationForm = ({
             </div>
           </div>
 
-          {/* BOTÃO HERO PARA ATENDER A PRÓXIMA PESSOA DA FILA */}
           <button
             type="button"
             className="btn-next-person-hero"
             onClick={handleStartNextPerson}
           >
-            <Sparkles size={22} />
+            <Sparkles size={20} />
             <span>⚡ Próxima Inscrição</span>
           </button>
         </div>
@@ -245,10 +293,10 @@ export const RegistrationForm = ({
 
   return (
     <div className="wizard-card">
-      {/* Barra de Progresso Superior */}
+      {/* Progresso Superior */}
       <div className="progress-container">
         <div className="progress-header">
-          <span>Passo {step} de {TOTAL_STEPS}</span>
+          <span>Etapa {step} de {TOTAL_STEPS}</span>
           <span>{progressPercent}%</span>
         </div>
         <div className="progress-track">
@@ -256,15 +304,13 @@ export const RegistrationForm = ({
         </div>
       </div>
 
-      {/* ========================================================= */}
-      {/* PASSO 1: NOME COMPLETO */}
-      {/* ========================================================= */}
+      {/* PASSO 1: NOME */}
       {step === 1 && (
-        <form onSubmit={handleNameSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+        <form onSubmit={handleNameSubmit} style={{ display: 'flex', flexDirection: 'column' }}>
           <div className="step-header">
             <div className="step-label">
-              <User size={16} />
-              <span>Identificação</span>
+              <User size={15} />
+              <span>Nome Completo</span>
             </div>
             <h2 className="step-title">Qual é o seu nome completo?</h2>
             <p className="step-subtitle">Digite o nome e sobrenome do participante</p>
@@ -275,7 +321,7 @@ export const RegistrationForm = ({
               ref={nameInputRef}
               type="text"
               className="wizard-input-lg"
-              placeholder="Ex: Lucas Gabriel Oliveira"
+              placeholder="Ex: Lucas Silva"
               value={name}
               onChange={(e) => setName(e.target.value)}
               autoComplete="name"
@@ -296,39 +342,41 @@ export const RegistrationForm = ({
         </form>
       )}
 
-      {/* ========================================================= */}
-      {/* PASSO 2: DATA DE NASCIMENTO */}
-      {/* ========================================================= */}
+      {/* PASSO 2: DATA DE NASCIMENTO (DIGITADA DIRETO) */}
       {step === 2 && (
-        <form onSubmit={handleBirthDateSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+        <form onSubmit={handleBirthDateSubmit} style={{ display: 'flex', flexDirection: 'column' }}>
           <div className="step-header">
             <div className="step-label">
-              <Calendar size={16} />
-              <span>Idade</span>
+              <Calendar size={15} />
+              <span>Data de Nascimento</span>
             </div>
             <h2 className="step-title">Qual sua data de nascimento?</h2>
-            <p className="step-subtitle">Para organizarmos as salas e faixas etárias</p>
+            <p className="step-subtitle">Digite os números (dia, mês e ano)</p>
           </div>
 
           <div className="wizard-input-wrap">
             <input
-              type="date"
+              ref={birthInputRef}
+              type="tel"
+              inputMode="numeric"
+              maxLength={10}
               className="wizard-input-lg"
+              placeholder="DD/MM/AAAA"
               value={birthDate}
-              onChange={(e) => setBirthDate(e.target.value)}
+              onChange={handleBirthDateChange}
               required
             />
 
-            {birthDate && (
+            {isBirthDateValid && (
               <div style={{
-                marginTop: '12px',
-                background: 'rgba(99, 102, 241, 0.15)',
-                border: '1px solid rgba(99, 102, 241, 0.3)',
-                padding: '10px 14px',
+                marginTop: '10px',
+                background: 'rgba(16, 185, 129, 0.15)',
+                border: '1px solid rgba(16, 185, 129, 0.3)',
+                padding: '8px 14px',
                 borderRadius: 'var(--radius-sm)',
-                color: '#c7d2fe',
+                color: '#6ee7b7',
                 fontSize: '0.92rem',
-                fontWeight: 600,
+                fontWeight: 700,
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '6px'
@@ -347,7 +395,7 @@ export const RegistrationForm = ({
             <button
               type="submit"
               className="btn-next-action"
-              disabled={!birthDate}
+              disabled={!isBirthDateValid}
             >
               <span>Continuar</span>
               <ChevronRight size={20} />
@@ -356,18 +404,16 @@ export const RegistrationForm = ({
         </form>
       )}
 
-      {/* ========================================================= */}
-      {/* PASSO 3: REDE (1 toque avança!) */}
-      {/* ========================================================= */}
+      {/* PASSO 3: REDE */}
       {step === 3 && (
-        <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
           <div className="step-header">
             <div className="step-label">
-              <Users size={16} />
-              <span>Comunidade</span>
+              <Users size={15} />
+              <span>Rede</span>
             </div>
             <h2 className="step-title">Qual é a sua Rede?</h2>
-            <p className="step-subtitle">Toque na sua rede para avançar</p>
+            <p className="step-subtitle">Toque na opção para avançar</p>
           </div>
 
           <div className="options-grid">
@@ -380,9 +426,7 @@ export const RegistrationForm = ({
                   className={`option-card-btn ${isSelected ? 'selected' : ''}`}
                   onClick={() => handleSelectNetwork(net.name)}
                 >
-                  <span className="option-card-label">
-                    <span>{net.name}</span>
-                  </span>
+                  <span className="option-card-label">{net.name}</span>
                   <div className="option-card-check">
                     {isSelected && <Check size={14} />}
                   </div>
@@ -400,18 +444,16 @@ export const RegistrationForm = ({
         </div>
       )}
 
-      {/* ========================================================= */}
-      {/* PASSO 4: DISCIPULADOR (1 toque avança!) */}
-      {/* ========================================================= */}
+      {/* PASSO 4: DISCIPULADOR */}
       {step === 4 && (
-        <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
           <div className="step-header">
             <div className="step-label">
-              <HeartHandshake size={16} />
+              <HeartHandshake size={15} />
               <span>Discipulado</span>
             </div>
             <h2 className="step-title">Quem é seu Discipulador?</h2>
-            <p className="step-subtitle">Selecione na lista cadastrada</p>
+            <p className="step-subtitle">Toque no nome para avançar</p>
           </div>
 
           <div className="options-grid">
@@ -424,9 +466,7 @@ export const RegistrationForm = ({
                   className={`option-card-btn ${isSelected ? 'selected' : ''}`}
                   onClick={() => handleSelectDiscipler(disc.name)}
                 >
-                  <span className="option-card-label">
-                    <span>{disc.name}</span>
-                  </span>
+                  <span className="option-card-label">{disc.name}</span>
                   <div className="option-card-check">
                     {isSelected && <Check size={14} />}
                   </div>
@@ -444,18 +484,16 @@ export const RegistrationForm = ({
         </div>
       )}
 
-      {/* ========================================================= */}
-      {/* PASSO 5: LÍDER (Pode ficar em branco!) */}
-      {/* ========================================================= */}
+      {/* PASSO 5: LÍDER */}
       {step === 5 && (
-        <form onSubmit={handleLeaderSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+        <form onSubmit={handleLeaderSubmit} style={{ display: 'flex', flexDirection: 'column' }}>
           <div className="step-header">
             <div className="step-label">
-              <Shield size={16} />
-              <span>Liderança Direta</span>
+              <Shield size={15} />
+              <span>Liderança</span>
             </div>
             <h2 className="step-title">Quem é o seu Líder?</h2>
-            <p className="step-subtitle">Pode deixar em branco caso você não tenha ou não lembre</p>
+            <p className="step-subtitle">Pode deixar em branco caso não tenha ou não lembre</p>
           </div>
 
           <div className="wizard-input-wrap">
@@ -463,20 +501,10 @@ export const RegistrationForm = ({
               ref={leaderInputRef}
               type="text"
               className="wizard-input-lg"
-              placeholder="Nome do seu líder..."
+              placeholder="Nome do líder (ou pule)..."
               value={leader}
               onChange={(e) => setLeader(e.target.value)}
             />
-
-            {/* BOTÃO RÁPIDO DE PULAR / DEIXAR EM BRANCO */}
-            <button
-              type="button"
-              className="btn-skip-action"
-              onClick={handleSkipLeader}
-            >
-              <FastForward size={18} style={{ marginRight: '6px' }} />
-              <span>Pular / Deixar em branco</span>
-            </button>
           </div>
 
           <div className="wizard-actions">
@@ -489,44 +517,45 @@ export const RegistrationForm = ({
               type="submit"
               className="btn-next-action"
             >
-              <span>{leader.trim() ? 'Confirmar Líder' : 'Continuar'}</span>
+              <span>{leader.trim() ? 'Continuar' : 'Deixar em branco'}</span>
               <ChevronRight size={20} />
             </button>
           </div>
+
+          {/* Atalho direto de pular */}
+          <button
+            type="button"
+            className="btn-skip-action"
+            onClick={handleSkipLeader}
+          >
+            <FastForward size={16} style={{ marginRight: '6px' }} />
+            <span>Pular Líder</span>
+          </button>
         </form>
       )}
 
-      {/* ========================================================= */}
-      {/* PASSO 6: WHATSAPP / CELULAR */}
-      {/* ========================================================= */}
+      {/* PASSO 6: WHATSAPP */}
       {step === 6 && (
-        <form onSubmit={handlePhoneSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+        <form onSubmit={handlePhoneSubmit} style={{ display: 'flex', flexDirection: 'column' }}>
           <div className="step-header">
             <div className="step-label">
-              <Phone size={16} />
-              <span>Contato</span>
+              <Phone size={15} />
+              <span>WhatsApp</span>
             </div>
-            <h2 className="step-title">Qual seu WhatsApp?</h2>
-            <p className="step-subtitle">Opcional para avisos e comprovante</p>
+            <h2 className="step-title">Qual o seu WhatsApp?</h2>
+            <p className="step-subtitle">Opcional para avisos e envio de comprovante</p>
           </div>
 
           <div className="wizard-input-wrap">
             <input
               type="tel"
+              inputMode="numeric"
+              maxLength={15}
               className="wizard-input-lg"
-              placeholder="(11) 98765-4321"
+              placeholder="(00) 00000-0000"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={handlePhoneChange}
             />
-
-            <button
-              type="button"
-              className="btn-skip-action"
-              onClick={handleSkipPhone}
-            >
-              <FastForward size={18} style={{ marginRight: '6px' }} />
-              <span>Pular sem telefone</span>
-            </button>
           </div>
 
           <div className="wizard-actions">
@@ -539,25 +568,32 @@ export const RegistrationForm = ({
               type="submit"
               className="btn-next-action"
             >
-              <span>Continuar</span>
+              <span>{phone.trim() ? 'Continuar' : 'Pular sem telefone'}</span>
               <ChevronRight size={20} />
             </button>
           </div>
+
+          <button
+            type="button"
+            className="btn-skip-action"
+            onClick={handleSkipPhone}
+          >
+            <FastForward size={16} style={{ marginRight: '6px' }} />
+            <span>Pular sem telefone</span>
+          </button>
         </form>
       )}
 
-      {/* ========================================================= */}
-      {/* PASSO 7: FORMA DE PAGAMENTO (1 toque conclui a inscrição!) */}
-      {/* ========================================================= */}
+      {/* PASSO 7: FORMA DE PAGAMENTO */}
       {step === 7 && (
-        <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
           <div className="step-header">
             <div className="step-label">
-              <CreditCard size={16} />
-              <span>Finalização</span>
+              <CreditCard size={15} />
+              <span>Finalizar</span>
             </div>
             <h2 className="step-title">Forma de Pagamento</h2>
-            <p className="step-subtitle">Toque na opção desejada para concluir a inscrição</p>
+            <p className="step-subtitle">Toque na opção para concluir a inscrição</p>
           </div>
 
           <div className="options-grid">
@@ -566,7 +602,7 @@ export const RegistrationForm = ({
                 key={opt.id}
                 type="button"
                 className="option-card-btn"
-                style={{ minHeight: '68px' }}
+                style={{ minHeight: '66px' }}
                 onClick={() => handleSelectPaymentAndSubmit(opt.id)}
                 disabled={isSubmitting}
               >
@@ -574,7 +610,7 @@ export const RegistrationForm = ({
                   <span className="option-card-icon">{opt.icon}</span>
                   <div>
                     <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#fff' }}>{opt.label}</div>
-                    <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>{opt.subtitle}</div>
+                    <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>{opt.subtitle}</div>
                   </div>
                 </div>
                 <ChevronRight size={18} style={{ color: 'var(--primary)' }} />
@@ -583,8 +619,8 @@ export const RegistrationForm = ({
           </div>
 
           {isSubmitting && (
-            <div style={{ textAlign: 'center', color: '#a5b4fc', padding: '10px', fontSize: '0.95rem' }}>
-              Gravando inscrição no Supabase...
+            <div style={{ textAlign: 'center', color: '#a5b4fc', padding: '8px', fontSize: '0.95rem' }}>
+              Gravando no Supabase...
             </div>
           )}
 
