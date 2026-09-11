@@ -25,6 +25,7 @@ export function App() {
   const [disciplers, setDisciplers] = useState([]);
   const [registrations, setRegistrations] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Toast
   const [toast, setToast] = useState(null);
@@ -35,8 +36,8 @@ export function App() {
   };
 
   // Carregar dados
-  const loadAllData = useCallback(async () => {
-    setIsLoading(true);
+  const loadAllData = useCallback(async (isSilent = false) => {
+    if (!isSilent) setIsLoading(true);
     try {
       const [evts, nets, discs, regs] = await Promise.all([
         fetchEvents(),
@@ -51,13 +52,31 @@ export function App() {
     } catch (err) {
       console.error('Erro ao carregar dados:', err);
     } finally {
-      setIsLoading(false);
+      if (!isSilent) setIsLoading(false);
     }
   }, []);
 
+  // Carga inicial e auto-polling suave a cada 15 segundos para atualizar entre aparelhos
   useEffect(() => {
     loadAllData();
+    const interval = setInterval(() => {
+      loadAllData(true);
+    }, 15000);
+    return () => clearInterval(interval);
   }, [loadAllData]);
+
+  // Atualização manual sob demanda (Botão Atualizar para PWA iPhone)
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await loadAllData(true);
+      showToast('Dados atualizados com sucesso!');
+    } catch (e) {
+      showToast('Erro ao atualizar dados.', 'error');
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 500);
+    }
+  };
 
   // Ações de Inscrição
   const handleRegistrationSubmit = async (regData) => {
@@ -130,11 +149,13 @@ export function App() {
     <div className="app-container">
       {currentScreen === 'kiosk' ? (
         <>
-          {/* Topo do Quiosque com Info do Evento e Botão Admin */}
+          {/* Topo do Quiosque com Info do Evento, Botão Atualizar e Botão Admin */}
           <Header
             event={activeEvent}
             attendeeCount={registrations.length}
             onOpenAdmin={() => setCurrentScreen('admin')}
+            onRefresh={handleManualRefresh}
+            isRefreshing={isRefreshing}
           />
 
           {/* O app abre DIRETO no modo inscrição rápida de atendimento */}
@@ -149,10 +170,12 @@ export function App() {
           </main>
         </>
       ) : (
-        /* Tela Completa de Administração (sem scroll preso ou modal fechado!) */
+        /* Tela Completa de Administração */
         <main style={{ flex: 1 }}>
           <AdminView
             onBack={() => setCurrentScreen('kiosk')}
+            onRefresh={handleManualRefresh}
+            isRefreshing={isRefreshing}
             registrations={registrations}
             events={events}
             networks={networks}

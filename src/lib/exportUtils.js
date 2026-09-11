@@ -122,3 +122,85 @@ export const exportToCSV = (registrations, filterSummary = 'Filtrados') => {
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 };
+
+// Gerar texto formatado com emojis para envio no WhatsApp
+export const generateWhatsAppText = (registrations, eventName = 'Evento', filterTag = '') => {
+  if (!registrations || registrations.length === 0) return '';
+  
+  const today = new Date().toLocaleDateString('pt-BR');
+  let text = `📋 *LISTA DE INSCRITOS - ${eventName.toUpperCase()}*\n`;
+  text += `📅 *Data:* ${today}\n`;
+  if (filterTag && filterTag !== 'Todos' && filterTag !== 'Inscritos') {
+    text += `🔍 *Filtro:* ${filterTag}\n`;
+  }
+  text += `👥 *Total:* ${registrations.length} participante(s)\n\n`;
+
+  registrations.forEach((reg, index) => {
+    const age = calculateAge(reg.birth_date);
+    const isPaid = reg.payment_status === 'Confirmado' || reg.payment_status === 'Pago';
+    const statusIcon = isPaid ? '✅' : '⏳';
+    
+    text += `${index + 1}. *${reg.name}* (${age})\n`;
+    text += `   • Rede: ${reg.network || 'Não informada'}\n`;
+    text += `   • Discipulador: ${reg.discipler || 'Não informado'}\n`;
+    if (reg.leader && reg.leader.trim()) {
+      text += `   • Líder: ${reg.leader}\n`;
+    }
+    text += `   • Pgto: ${reg.payment_method || 'PIX'} (${statusIcon} ${reg.payment_status || 'Pendente'})\n`;
+    if (reg.phone && reg.phone.trim()) {
+      text += `   • Contato: ${reg.phone}\n`;
+    }
+    text += `\n`;
+  });
+
+  const confirmedCount = registrations.filter(r => r.payment_status === 'Confirmado' || r.payment_status === 'Pago').length;
+  const pendingCount = registrations.length - confirmedCount;
+  text += `📊 *Resumo:*\n`;
+  text += `✅ Pagos / Confirmados: ${confirmedCount}\n`;
+  text += `⏳ Pendentes: ${pendingCount}\n`;
+
+  return text;
+};
+
+// Copiar ou Compartilhar no WhatsApp
+export const copyOrShareWhatsApp = async (registrations, eventName = 'Evento', filterTag = '') => {
+  const text = generateWhatsAppText(registrations, eventName, filterTag);
+  if (!text) {
+    alert('Nenhum inscrito para exportar.');
+    return false;
+  }
+
+  // Tentar Web Share API primeiro no celular
+  if (navigator.share && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+    try {
+      await navigator.share({
+        title: `Inscritos - ${eventName}`,
+        text: text
+      });
+      return true;
+    } catch (e) {
+      if (e.name === 'AbortError') return false;
+    }
+  }
+
+  // Copiar para a área de transferência
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (err) {
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      return true;
+    } catch (e2) {
+      alert('Não foi possível copiar automaticamente.');
+      return false;
+    }
+  }
+};

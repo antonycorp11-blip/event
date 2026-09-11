@@ -17,14 +17,25 @@ import {
   Save,
   Phone,
   Plus,
-  CloudUpload
+  CloudUpload,
+  RefreshCw,
+  MessageSquareShare,
+  X
 } from 'lucide-react';
-import { exportToExcel, exportToCSV, formatDateBR, calculateAge } from '../lib/exportUtils';
+import {
+  exportToExcel,
+  exportToCSV,
+  formatDateBR,
+  calculateAge,
+  copyOrShareWhatsApp
+} from '../lib/exportUtils';
 import { ListsManager } from './ListsManager';
 import { syncLocalToCloud } from '../lib/supabase';
 
 export const AdminView = ({
   onBack,
+  onRefresh,
+  isRefreshing,
   registrations = [],
   events = [],
   networks = [],
@@ -39,7 +50,8 @@ export const AdminView = ({
   isSupabaseConnected
 }) => {
   const [activeTab, setActiveTab] = useState('attendees'); // 'attendees' | 'event' | 'lists' | 'database'
-  const [showFilters, setShowFilters] = useState(false);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [isCopyingWhatsApp, setIsCopyingWhatsApp] = useState(false);
 
   // Filtros
   const [filters, setFilters] = useState({
@@ -118,8 +130,7 @@ export const AdminView = ({
     return { total, confirmed, pending };
   }, [registrations]);
 
-  const hasActiveFilters = Boolean(
-    filters.search ||
+  const hasAdvancedFilters = Boolean(
     filters.network ||
     filters.discipler ||
     filters.leader ||
@@ -127,14 +138,19 @@ export const AdminView = ({
     filters.paymentStatus
   );
 
-  // Estado edição do evento
-  const currentEvent = events[0] || { name: '', price: 0, date: '', location: '' };
-  const [eventName, setEventName] = useState(currentEvent.name || '');
-  const [eventPrice, setEventPrice] = useState(currentEvent.price || 0);
-  const [eventDate, setEventDate] = useState(currentEvent.date || '');
-  const [eventLocation, setEventLocation] = useState(currentEvent.location || '');
-  const [isSavingEvent, setIsSavingEvent] = useState(false);
+  // Exportar para WhatsApp
+  const handleExportWhatsApp = async () => {
+    setIsCopyingWhatsApp(true);
+    const eventName = events[0]?.name || 'Evento';
+    const tag = filters.network || filters.paymentMethod || '';
+    const success = await copyOrShareWhatsApp(filteredRegistrations, eventName, tag);
+    setIsCopyingWhatsApp(false);
+    if (success) {
+      alert('Texto copiado com sucesso! Agora basta colar na conversa do WhatsApp.');
+    }
+  };
 
+  // Recuperação de dados do celular
   const [isSyncing, setIsSyncing] = useState(false);
   const handleSyncLocal = async () => {
     setIsSyncing(true);
@@ -152,6 +168,14 @@ export const AdminView = ({
       setIsSyncing(false);
     }
   };
+
+  // Edição do evento
+  const currentEvent = events[0] || { name: '', price: 0, date: '', location: '' };
+  const [eventName, setEventName] = useState(currentEvent.name || '');
+  const [eventPrice, setEventPrice] = useState(currentEvent.price || 0);
+  const [eventDate, setEventDate] = useState(currentEvent.date || '');
+  const [eventLocation, setEventLocation] = useState(currentEvent.location || '');
+  const [isSavingEvent, setIsSavingEvent] = useState(false);
 
   const handleSaveEvent = async (e) => {
     e.preventDefault();
@@ -175,12 +199,13 @@ export const AdminView = ({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-      {/* Topo com botão de voltar para o modo quiosque de atendimento */}
+      {/* Topo com botão de voltar e botão de atualizar */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '12px 16px',
+        gap: '8px',
+        padding: '12px 14px',
         background: 'var(--bg-card)',
         border: '1px solid var(--border-glass)',
         borderRadius: 'var(--radius-lg)'
@@ -191,52 +216,66 @@ export const AdminView = ({
           style={{
             display: 'inline-flex',
             alignItems: 'center',
-            gap: '8px',
+            gap: '6px',
             background: 'var(--primary-gradient)',
             border: 'none',
             color: '#fff',
-            padding: '10px 18px',
+            padding: '10px 16px',
             borderRadius: 'var(--radius-full)',
             fontWeight: 800,
-            fontSize: '0.92rem',
+            fontSize: '0.88rem',
             cursor: 'pointer',
             boxShadow: '0 4px 14px rgba(99, 102, 241, 0.4)'
           }}
         >
-          <ArrowLeft size={18} />
-          <span>Voltar ao Atendimento</span>
+          <ArrowLeft size={16} />
+          <span>Voltar</span>
         </button>
 
-        <button
-          type="button"
-          onClick={handleSyncLocal}
-          disabled={isSyncing}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
-            background: 'rgba(255, 255, 255, 0.06)',
-            border: '1px solid var(--border-glass)',
-            color: '#c7d2fe',
-            padding: '8px 12px',
-            borderRadius: 'var(--radius-full)',
-            fontWeight: 700,
-            fontSize: '0.78rem',
-            cursor: 'pointer'
-          }}
-          title="Salvar na nuvem o que foi digitado neste celular"
-        >
-          <CloudUpload size={14} />
-          <span>{isSyncing ? 'Sincronizando...' : 'Recuperar Dados deste Celular'}</span>
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {/* Botão de Atualizar Manual para PWA */}
+          <button
+            type="button"
+            className="btn-refresh-pill"
+            onClick={onRefresh}
+            title="Atualizar dados em tempo real"
+            disabled={isRefreshing}
+          >
+            <RefreshCw size={14} className={isRefreshing ? 'spin-icon' : ''} />
+            <span>{isRefreshing ? '...' : 'Atualizar'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleSyncLocal}
+            disabled={isSyncing}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              background: 'rgba(255, 255, 255, 0.06)',
+              border: '1px solid var(--border-glass)',
+              color: '#c7d2fe',
+              padding: '8px 12px',
+              borderRadius: 'var(--radius-full)',
+              fontWeight: 700,
+              fontSize: '0.76rem',
+              cursor: 'pointer'
+            }}
+            title="Sincronizar dados locais"
+          >
+            <CloudUpload size={13} />
+            <span>{isSyncing ? '...' : 'Recuperar'}</span>
+          </button>
+        </div>
       </div>
 
-      {/* Abas Horizontais Limpas */}
+      {/* Abas Horizontais */}
       <div style={{
         display: 'flex',
-        gap: '8px',
+        gap: '6px',
         overflowX: 'auto',
-        paddingBottom: '4px',
+        paddingBottom: '2px',
         scrollbarWidth: 'none'
       }}>
         <button
@@ -246,19 +285,19 @@ export const AdminView = ({
             display: 'inline-flex',
             alignItems: 'center',
             gap: '6px',
-            padding: '10px 16px',
+            padding: '9px 14px',
             borderRadius: 'var(--radius-full)',
             border: '1px solid',
             borderColor: activeTab === 'attendees' ? 'var(--primary)' : 'var(--border-subtle)',
             background: activeTab === 'attendees' ? 'rgba(99, 102, 241, 0.25)' : 'rgba(15, 23, 42, 0.7)',
             color: activeTab === 'attendees' ? '#fff' : 'var(--text-muted)',
             fontWeight: 700,
-            fontSize: '0.88rem',
+            fontSize: '0.84rem',
             cursor: 'pointer',
             whiteSpace: 'nowrap'
           }}
         >
-          <Users size={16} />
+          <Users size={15} />
           <span>Inscritos ({registrations.length})</span>
         </button>
 
@@ -269,19 +308,19 @@ export const AdminView = ({
             display: 'inline-flex',
             alignItems: 'center',
             gap: '6px',
-            padding: '10px 16px',
+            padding: '9px 14px',
             borderRadius: 'var(--radius-full)',
             border: '1px solid',
             borderColor: activeTab === 'event' ? 'var(--primary)' : 'var(--border-subtle)',
             background: activeTab === 'event' ? 'rgba(99, 102, 241, 0.25)' : 'rgba(15, 23, 42, 0.7)',
             color: activeTab === 'event' ? '#fff' : 'var(--text-muted)',
             fontWeight: 700,
-            fontSize: '0.88rem',
+            fontSize: '0.84rem',
             cursor: 'pointer',
             whiteSpace: 'nowrap'
           }}
         >
-          <Calendar size={16} />
+          <Calendar size={15} />
           <span>Evento & Valor</span>
         </button>
 
@@ -292,20 +331,20 @@ export const AdminView = ({
             display: 'inline-flex',
             alignItems: 'center',
             gap: '6px',
-            padding: '10px 16px',
+            padding: '9px 14px',
             borderRadius: 'var(--radius-full)',
             border: '1px solid',
             borderColor: activeTab === 'lists' ? 'var(--primary)' : 'var(--border-subtle)',
             background: activeTab === 'lists' ? 'rgba(99, 102, 241, 0.25)' : 'rgba(15, 23, 42, 0.7)',
             color: activeTab === 'lists' ? '#fff' : 'var(--text-muted)',
             fontWeight: 700,
-            fontSize: '0.88rem',
+            fontSize: '0.84rem',
             cursor: 'pointer',
             whiteSpace: 'nowrap'
           }}
         >
-          <Settings size={16} />
-          <span>Redes & Discipuladores</span>
+          <Settings size={15} />
+          <span>Listas</span>
         </button>
 
         <button
@@ -315,20 +354,20 @@ export const AdminView = ({
             display: 'inline-flex',
             alignItems: 'center',
             gap: '6px',
-            padding: '10px 16px',
+            padding: '9px 14px',
             borderRadius: 'var(--radius-full)',
             border: '1px solid',
             borderColor: activeTab === 'database' ? 'var(--primary)' : 'var(--border-subtle)',
             background: activeTab === 'database' ? 'rgba(99, 102, 241, 0.25)' : 'rgba(15, 23, 42, 0.7)',
             color: activeTab === 'database' ? '#fff' : 'var(--text-muted)',
             fontWeight: 700,
-            fontSize: '0.88rem',
+            fontSize: '0.84rem',
             cursor: 'pointer',
             whiteSpace: 'nowrap'
           }}
         >
-          <Database size={16} />
-          <span>Supabase {isSupabaseConnected ? '🟢' : '🟡'}</span>
+          <Database size={15} />
+          <span>Supabase</span>
         </button>
       </div>
 
@@ -338,7 +377,7 @@ export const AdminView = ({
       {activeTab === 'attendees' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           
-          {/* Linha Compacta de Métricas */}
+          {/* Métricas Compactas */}
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(3, 1fr)',
@@ -347,38 +386,75 @@ export const AdminView = ({
             <div style={{
               background: 'rgba(15, 23, 42, 0.75)',
               border: '1px solid var(--border-subtle)',
-              padding: '10px 12px',
+              padding: '8px 10px',
               borderRadius: 'var(--radius-md)',
               textAlign: 'center'
             }}>
-              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block' }}>Total</span>
-              <strong style={{ fontSize: '1.4rem', color: '#fff' }}>{stats.total}</strong>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', display: 'block' }}>Total</span>
+              <strong style={{ fontSize: '1.3rem', color: '#fff' }}>{stats.total}</strong>
             </div>
 
             <div style={{
               background: 'rgba(16, 185, 129, 0.12)',
               border: '1px solid rgba(16, 185, 129, 0.25)',
-              padding: '10px 12px',
+              padding: '8px 10px',
               borderRadius: 'var(--radius-md)',
               textAlign: 'center'
             }}>
-              <span style={{ fontSize: '0.72rem', color: '#6ee7b7', textTransform: 'uppercase', display: 'block' }}>Pagos</span>
-              <strong style={{ fontSize: '1.4rem', color: '#34d399' }}>{stats.confirmed}</strong>
+              <span style={{ fontSize: '0.7rem', color: '#6ee7b7', textTransform: 'uppercase', display: 'block' }}>Pagos</span>
+              <strong style={{ fontSize: '1.3rem', color: '#34d399' }}>{stats.confirmed}</strong>
             </div>
 
             <div style={{
               background: 'rgba(245, 158, 11, 0.12)',
               border: '1px solid rgba(245, 158, 11, 0.25)',
-              padding: '10px 12px',
+              padding: '8px 10px',
               borderRadius: 'var(--radius-md)',
               textAlign: 'center'
             }}>
-              <span style={{ fontSize: '0.72rem', color: '#fcd34d', textTransform: 'uppercase', display: 'block' }}>Pendentes</span>
-              <strong style={{ fontSize: '1.4rem', color: '#fbbf24' }}>{stats.pending}</strong>
+              <span style={{ fontSize: '0.7rem', color: '#fcd34d', textTransform: 'uppercase', display: 'block' }}>Pendentes</span>
+              <strong style={{ fontSize: '1.3rem', color: '#fbbf24' }}>{stats.pending}</strong>
             </div>
           </div>
 
-          {/* Botões de Exportação e Toggle de Filtros */}
+          {/* BARRA DE PESQUISA PROEMINENTE (SEMPRE VISÍVEL!) */}
+          <div style={{ position: 'relative' }}>
+            <Search size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-dim)' }} />
+            <input
+              type="text"
+              className="form-input"
+              placeholder="🔍 Buscar por nome do participante ou telefone..."
+              value={filters.search}
+              onChange={(e) => handleFilterChange('search', e.target.value)}
+              style={{
+                paddingLeft: '42px',
+                minHeight: '46px',
+                fontSize: '0.95rem',
+                border: '2px solid rgba(255, 255, 255, 0.12)'
+              }}
+            />
+            {filters.search && (
+              <button
+                type="button"
+                onClick={() => handleFilterChange('search', '')}
+                style={{
+                  position: 'absolute',
+                  right: '12px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-dim)',
+                  cursor: 'pointer',
+                  padding: '4px'
+                }}
+              >
+                <X size={16} />
+              </button>
+            )}
+          </div>
+
+          {/* Botões de Ação: WhatsApp, Excel, CSV e Filtros Avançados */}
           <div style={{
             display: 'flex',
             alignItems: 'center',
@@ -386,83 +462,98 @@ export const AdminView = ({
             gap: '8px',
             flexWrap: 'wrap'
           }}>
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+              {/* BOTÃO EXCLUSIVO PARA WHATSAPP */}
+              <button
+                type="button"
+                onClick={handleExportWhatsApp}
+                disabled={isCopyingWhatsApp}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '8px 14px',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'rgba(37, 211, 102, 0.18)',
+                  color: '#25d366',
+                  border: '1px solid rgba(37, 211, 102, 0.35)',
+                  fontWeight: 800,
+                  fontSize: '0.84rem',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 10px rgba(37, 211, 102, 0.2)'
+                }}
+                title="Copiar texto formatado com emojis para WhatsApp"
+              >
+                <MessageSquareShare size={16} />
+                <span>{isCopyingWhatsApp ? 'Copiando...' : 'Copiar p/ WhatsApp'}</span>
+              </button>
+
               <button
                 type="button"
                 className="btn-secondary btn-export-excel"
-                style={{ padding: '8px 14px', fontSize: '0.84rem' }}
+                style={{ padding: '8px 12px', fontSize: '0.82rem' }}
                 onClick={() => exportToExcel(filteredRegistrations, 'Inscritos')}
+                title="Baixar planilha Excel"
               >
-                <FileSpreadsheet size={16} />
-                <span>Excel (.xlsx)</span>
+                <FileSpreadsheet size={15} />
+                <span>Excel</span>
               </button>
 
               <button
                 type="button"
                 className="btn-secondary btn-export-csv"
-                style={{ padding: '8px 14px', fontSize: '0.84rem' }}
+                style={{ padding: '8px 12px', fontSize: '0.82rem' }}
                 onClick={() => exportToCSV(filteredRegistrations, 'Inscritos')}
+                title="Baixar arquivo CSV"
               >
-                <FileText size={16} />
+                <FileText size={15} />
                 <span>CSV</span>
               </button>
             </div>
 
-            {/* Botão para Expandir/Recolher Filtros (evita scroll excessivo!) */}
+            {/* Toggle de Filtros Avançados */}
             <button
               type="button"
-              onClick={() => setShowFilters(!showFilters)}
+              onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '6px',
-                padding: '8px 14px',
+                gap: '5px',
+                padding: '8px 12px',
                 borderRadius: 'var(--radius-md)',
-                background: hasActiveFilters ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                background: hasAdvancedFilters ? 'rgba(99, 102, 241, 0.25)' : 'rgba(255, 255, 255, 0.05)',
                 border: '1px solid',
-                borderColor: hasActiveFilters ? 'var(--primary)' : 'var(--border-subtle)',
-                color: hasActiveFilters ? '#a5b4fc' : 'var(--text-muted)',
-                fontSize: '0.84rem',
+                borderColor: hasAdvancedFilters ? 'var(--primary)' : 'var(--border-subtle)',
+                color: hasAdvancedFilters ? '#c7d2fe' : 'var(--text-muted)',
+                fontSize: '0.8rem',
                 fontWeight: 700,
                 cursor: 'pointer'
               }}
             >
-              <Filter size={15} />
-              <span>{showFilters ? 'Ocultar Filtros' : 'Filtrar'}</span>
-              {hasActiveFilters && <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#6366f1' }} />}
-              {showFilters ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+              <Filter size={14} />
+              <span>{showAdvancedFilters ? 'Filtros' : 'Filtros'}</span>
+              {hasAdvancedFilters && <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#6366f1' }} />}
+              {showAdvancedFilters ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
             </button>
           </div>
 
-          {/* Área Recolhível de Filtros */}
-          {showFilters && (
+          {/* Filtros Avançados Recolhíveis */}
+          {showAdvancedFilters && (
             <div style={{
               background: 'rgba(15, 23, 42, 0.85)',
               border: '1px solid var(--border-glass)',
               borderRadius: 'var(--radius-md)',
-              padding: '14px',
+              padding: '12px',
               display: 'flex',
               flexDirection: 'column',
-              gap: '10px'
+              gap: '8px'
             }}>
-              <div style={{ position: 'relative' }}>
-                <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-dim)' }} />
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="Buscar por nome ou telefone..."
-                  value={filters.search}
-                  onChange={(e) => handleFilterChange('search', e.target.value)}
-                  style={{ paddingLeft: '38px', minHeight: '40px', fontSize: '0.88rem' }}
-                />
-              </div>
-
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                 <select
                   className="form-select"
                   value={filters.network}
                   onChange={(e) => handleFilterChange('network', e.target.value)}
-                  style={{ minHeight: '38px', fontSize: '0.82rem', padding: '6px 10px' }}
+                  style={{ minHeight: '36px', fontSize: '0.82rem', padding: '6px 10px' }}
                 >
                   <option value="">Todas as Redes</option>
                   {networks.map((n) => (
@@ -474,7 +565,7 @@ export const AdminView = ({
                   className="form-select"
                   value={filters.discipler}
                   onChange={(e) => handleFilterChange('discipler', e.target.value)}
-                  style={{ minHeight: '38px', fontSize: '0.82rem', padding: '6px 10px' }}
+                  style={{ minHeight: '36px', fontSize: '0.82rem', padding: '6px 10px' }}
                 >
                   <option value="">Todos Discipuladores</option>
                   {disciplers.map((d) => (
@@ -486,7 +577,7 @@ export const AdminView = ({
                   className="form-select"
                   value={filters.paymentMethod}
                   onChange={(e) => handleFilterChange('paymentMethod', e.target.value)}
-                  style={{ minHeight: '38px', fontSize: '0.82rem', padding: '6px 10px' }}
+                  style={{ minHeight: '36px', fontSize: '0.82rem', padding: '6px 10px' }}
                 >
                   <option value="">Todas Formas Pgto</option>
                   <option value="PIX">PIX</option>
@@ -499,15 +590,15 @@ export const AdminView = ({
                   className="form-select"
                   value={filters.paymentStatus}
                   onChange={(e) => handleFilterChange('paymentStatus', e.target.value)}
-                  style={{ minHeight: '38px', fontSize: '0.82rem', padding: '6px 10px' }}
+                  style={{ minHeight: '36px', fontSize: '0.82rem', padding: '6px 10px' }}
                 >
                   <option value="">Todos Status</option>
-                  <option value="Confirmado">Confirmados / Pagos</option>
+                  <option value="Confirmado">Confirmados</option>
                   <option value="Pendente">Pendentes</option>
                 </select>
               </div>
 
-              {hasActiveFilters && (
+              {hasAdvancedFilters && (
                 <button
                   type="button"
                   onClick={handleClearFilters}
@@ -515,22 +606,22 @@ export const AdminView = ({
                     background: 'transparent',
                     border: 'none',
                     color: '#f87171',
-                    fontSize: '0.82rem',
+                    fontSize: '0.8rem',
                     fontWeight: 700,
                     cursor: 'pointer',
                     textAlign: 'right'
                   }}
                 >
-                  Limpar todos os filtros
+                  Limpar filtros avançados
                 </button>
               )}
             </div>
           )}
 
-          {/* Listagem de Inscritos (Scroll nativo, sem travamento!) */}
+          {/* Listagem de Inscritos (Scroll nativo, rápido e suave) */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '2px' }}>
-              Exibindo <strong>{filteredRegistrations.length}</strong> participantes
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '2px' }}>
+              Exibindo <strong>{filteredRegistrations.length}</strong> participante(s)
             </div>
 
             {filteredRegistrations.length === 0 ? (
@@ -543,9 +634,11 @@ export const AdminView = ({
                 color: 'var(--text-muted)'
               }}>
                 <Users size={32} style={{ color: 'var(--text-dim)', marginBottom: '8px' }} />
-                <div style={{ fontWeight: 700, color: '#fff' }}>Nenhum inscrito no momento</div>
+                <div style={{ fontWeight: 700, color: '#fff' }}>
+                  {filters.search ? 'Nenhum participante encontrado na busca' : 'Nenhum inscrito no momento'}
+                </div>
                 <div style={{ fontSize: '0.82rem', marginTop: '4px' }}>
-                  Faça as primeiras inscrições na tela de atendimento!
+                  {filters.search ? 'Tente buscar por outro termo' : 'Cadastre os primeiros participantes na tela de atendimento!'}
                 </div>
               </div>
             ) : (
@@ -558,7 +651,7 @@ export const AdminView = ({
                         <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', fontWeight: 600 }}>
                           #{idx + 1}
                         </div>
-                        <div style={{ fontSize: '1rem', fontWeight: 800, color: '#fff' }}>
+                        <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#fff' }}>
                           {item.name}
                         </div>
                         {item.phone && (

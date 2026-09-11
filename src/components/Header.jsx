@@ -1,10 +1,12 @@
 import React from 'react';
-import { Calendar, Settings, Flame } from 'lucide-react';
+import { Calendar, Settings, Flame, RefreshCw } from 'lucide-react';
 
 export const Header = ({
   event,
   attendeeCount,
-  onOpenAdmin
+  onOpenAdmin,
+  onRefresh,
+  isRefreshing
 }) => {
   const activeEvent = event || { name: 'Conferência 2026', price: 0 };
   const priceFormatted = Number(activeEvent.price) > 0 
@@ -27,16 +29,30 @@ export const Header = ({
         </div>
       </div>
 
-      {/* Botão de Admin no Canto */}
-      <button
-        type="button"
-        className="btn-admin-pill"
-        onClick={onOpenAdmin}
-        title="Painel de Administração (Listas, Filtros, Exportação)"
-      >
-        <Settings size={15} />
-        <span>Admin</span>
-      </button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {/* Botão de Atualizar em Tempo Real (Essencial para PWA iPhone) */}
+        <button
+          type="button"
+          className="btn-refresh-pill"
+          onClick={onRefresh}
+          title="Atualizar dados em tempo real"
+          disabled={isRefreshing}
+        >
+          <RefreshCw size={14} className={isRefreshing ? 'spin-icon' : ''} />
+          <span>{isRefreshing ? '...' : 'Atualizar'}</span>
+        </button>
+
+        {/* Botão de Admin */}
+        <button
+          type="button"
+          className="btn-admin-pill"
+          onClick={onOpenAdmin}
+          title="Painel de Administração (Listas, Filtros, Exportação)"
+        >
+          <Settings size={15} />
+          <span>Admin</span>
+        </button>
+      </div>
     </header>
   );
 };
