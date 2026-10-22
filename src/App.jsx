@@ -1,16 +1,19 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Header } from './components/Header';
 import { RegistrationForm } from './components/RegistrationForm';
 import { AdminView } from './components/AdminView';
 import {
   getSupabaseConfig, saveSupabaseConfig, testSupabaseConnection,
   getAdminSession, signInAdmin, signOutAdmin, registerAdminAccount, claimFirstAdmin,
-  createEventWithSetupCode, createEventWithLots, saveEventLotsWithSetupCode,
+  createEventWithSetupCode, createEventWithLots, createEventWithBanner,
+  createEventWithLotsAndBanner, saveEventLotsWithSetupCode,
+  saveEventBannerWithSetupCode, fetchEventBanner,
   fetchEvents, fetchNetworks, fetchDisciplers, fetchLeaders, fetchRegistrations,
   createRegistration, createSharedRegistration, fetchSharedEvent,
   deleteRegistration, updateRegistrationStatus, addNetwork, deleteNetwork,
   addDiscipler, deleteDiscipler, addLeader, deleteLeader, addEvent
 } from './lib/supabase';
+import { prepareEventBanner } from './lib/eventImage';
 
 const sharedToken = window.location.pathname.match(/^\/e\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i)?.[1];
 const isSharedPath = window.location.pathname.startsWith('/e/');
@@ -154,19 +157,24 @@ function QuickEventSetup({ onAdmin, onConfigure, onBackToEvent, onLinkReady, ini
   const [price, setPrice] = useState('0');
   const [date, setDate] = useState('');
   const [location, setLocation] = useState('');
-  const [networksText, setNetworksText] = useState(() => textFromLink(initialLink, 'redes'));
-  const [disciplersText, setDisciplersText] = useState(() => textFromLink(initialLink, 'discipuladores'));
-  const [leadersText, setLeadersText] = useState(() => textFromLink(initialLink, 'lideres'));
+  const [networksText, setNetworksText] = useState('');
+  const [disciplersText, setDisciplersText] = useState('');
+  const [leadersText, setLeadersText] = useState('');
   const [existingLink, setExistingLink] = useState(initialLink);
+  const [editingExisting, setEditingExisting] = useState(false);
   const [lotMode, setLotMode] = useState('single');
   const [lotRows, setLotRows] = useState(starterLots);
   const [lotsDirty, setLotsDirty] = useState(false);
   const [hasSavedLots, setHasSavedLots] = useState(false);
+  const [bannerData, setBannerData] = useState('');
+  const [bannerDirty, setBannerDirty] = useState(false);
+  const [bannerBusy, setBannerBusy] = useState(false);
+  const imageInputRef = useRef(null);
   const [link, setLink] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    if (!existingLink.trim()) { setHasSavedLots(false); return; }
+    if (!editingExisting || !existingLink.trim()) { setHasSavedLots(false); return; }
     let url;
     try { url = new URL(existingLink.trim()); } catch (_) { return; }
     const token = url.origin === window.location.origin ? url.pathname.match(eventPath)?.[1] : null;
@@ -180,8 +188,11 @@ function QuickEventSetup({ onAdmin, onConfigure, onBackToEvent, onLinkReady, ini
       setLotRows(lots.length ? lots.map(({ id, name, quantity, price, sold }) => ({ id, name, quantity: String(quantity), price: String(price), sold })) : starterLots());
       setLotsDirty(false);
     }).catch(() => {});
+    fetchEventBanner(token).then(data => {
+      if (!cancelled) { setBannerData(data || ''); setBannerDirty(false); }
+    }).catch(() => {});
     return () => { cancelled = true; };
-  }, [existingLink]);
+  }, [editingExisting, existingLink]);
   const changeLot = (index, field, value) => {
     setLotsDirty(true);
     setLotRows(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, [field]: value } : row));
@@ -189,6 +200,8 @@ function QuickEventSetup({ onAdmin, onConfigure, onBackToEvent, onLinkReady, ini
   const reset = () => {
     setLink(''); setName(''); setPrice('0'); setDate(''); setLocation('');
     setNetworksText(''); setDisciplersText(''); setLeadersText(''); setExistingLink('');
+    setEditingExisting(false); setBannerData(''); setBannerDirty(false);
+    if (imageInputRef.current) imageInputRef.current.value = '';
     setLotMode('single'); setLotRows(starterLots()); setLotsDirty(false); setHasSavedLots(false);
   };
   return <main className="glass-card" style={{ maxWidth: 560, margin: '5vh auto' }}>
@@ -213,7 +226,7 @@ function QuickEventSetup({ onAdmin, onConfigure, onBackToEvent, onLinkReady, ini
         validateTeamLists(networksText, disciplersText, leadersText);
         const lots = lotMode === 'lots' ? checkedLots(lotRows) : [];
         let token;
-        if (existingLink.trim()) {
+        if (editingExisting) {
           const url = new URL(existingLink.trim());
           if (url.origin !== window.location.origin) throw new Error('Cole o link deste site para o evento.');
           token = url.pathname.match(eventPath)?.[1];
@@ -223,10 +236,19 @@ function QuickEventSetup({ onAdmin, onConfigure, onBackToEvent, onLinkReady, ini
             await saveEventLotsWithSetupCode(code, token, lots);
           }
           if (lotsDirty && lotMode === 'single' && hasSavedLots) throw new Error('Um evento com lotes não pode voltar ao preço único.');
+          if (bannerDirty) {
+            if (!code.trim()) throw new Error('Informe o código inicial para salvar a foto.');
+            await saveEventBannerWithSetupCode(code, token, bannerData);
+          }
         } else {
+          const eventData = { name, price, date, location };
           const saved = lotMode === 'lots'
-            ? await createEventWithLots(code, { name, date, location }, lots)
-            : await createEventWithSetupCode(code, { name, price, date, location });
+            ? bannerData
+              ? await createEventWithLotsAndBanner(code, eventData, lots, bannerData)
+              : await createEventWithLots(code, eventData, lots)
+            : bannerData
+              ? await createEventWithBanner(code, eventData, bannerData)
+              : await createEventWithSetupCode(code, eventData);
           token = saved.share_token;
         }
         const completedLink = eventLink(token, networksText, disciplersText, leadersText);
@@ -234,17 +256,24 @@ function QuickEventSetup({ onAdmin, onConfigure, onBackToEvent, onLinkReady, ini
         onLinkReady?.(completedLink);
         setLink(completedLink);
       } catch (err) {
-        setError(/create_event_with_lots|save_event_lots_with_setup_code|PGRST202|schema cache/i.test(err.message)
-          ? 'A função de lotes ainda não está ativa no Supabase. Execute supabase_lotes.sql uma vez no SQL Editor.'
-          : err.message);
+        setError(/create_event_with_lots_and_banner|create_event_with_banner|save_event_banner_with_setup_code/i.test(err.message)
+          ? 'A foto ainda não está ativa no Supabase. Execute supabase_foto.sql uma vez no SQL Editor.'
+          : /create_event_with_lots|save_event_lots_with_setup_code|PGRST202|schema cache/i.test(err.message)
+            ? 'A função de lotes ainda não está ativa no Supabase. Execute supabase_lotes.sql uma vez no SQL Editor.'
+            : err.message);
       }
       finally { setBusy(false); }
     }} style={{ display: 'grid', gap: 12 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-        <label style={{ fontWeight: 700 }}>Evento</label>
-        {existingLink.trim() && <button type="button" className="btn-secondary" style={{ width: 'auto' }} onClick={reset}>Novo evento</button>}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button type="button" className={!editingExisting ? 'btn-primary' : 'btn-secondary'} onClick={() => { if (editingExisting) reset(); }}>Novo evento</button>
+        <button type="button" className={editingExisting ? 'btn-primary' : 'btn-secondary'} onClick={() => {
+          setEditingExisting(true);
+          setNetworksText(textFromLink(existingLink, 'redes'));
+          setDisciplersText(textFromLink(existingLink, 'discipuladores'));
+          setLeadersText(textFromLink(existingLink, 'lideres'));
+        }}>Editar evento existente</button>
       </div>
-      <input className="form-input" type="url" value={existingLink} onChange={e => {
+      {editingExisting ? <input className="form-input" type="url" value={existingLink} onChange={e => {
         const value = e.target.value;
         setExistingLink(value);
         try {
@@ -253,17 +282,30 @@ function QuickEventSetup({ onAdmin, onConfigure, onBackToEvent, onLinkReady, ini
           setDisciplersText(namesFromLink(url, 'discipuladores').join('\n'));
           setLeadersText(namesFromLink(url, 'lideres').join('\n'));
         } catch (_) { /* O link ainda está sendo digitado. */ }
-      }} placeholder="Já tem um evento? Cole o link aqui" />
-      {!existingLink.trim() && <>
+      }} placeholder="Cole aqui o link de inscrição do evento" required /> : <>
         <input className="form-input" value={name} onChange={e => setName(e.target.value)} placeholder="Nome do novo evento" required />
         <input className="form-input" value={date} onChange={e => setDate(e.target.value)} placeholder="Data (opcional)" />
         <input className="form-input" value={location} onChange={e => setLocation(e.target.value)} placeholder="Local (opcional)" />
       </>}
+      <label style={{ fontWeight: 700 }}>Foto horizontal do evento (16:9)
+        <input ref={imageInputRef} className="form-input" type="file" accept="image/jpeg,image/png,image/webp" onChange={async e => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          setBannerBusy(true); setError('');
+          try { setBannerData(await prepareEventBanner(file)); setBannerDirty(true); }
+          catch (err) { setError(err.message); }
+          finally { setBannerBusy(false); }
+        }} style={{ marginTop: 8 }} />
+      </label>
+      {bannerData && <div style={{ display: 'grid', gap: 8 }}>
+        <img src={bannerData} alt="Prévia horizontal do evento" style={{ width: '100%', aspectRatio: '16 / 9', objectFit: 'cover', borderRadius: 10 }} />
+        <button type="button" className="btn-secondary" onClick={() => { setBannerData(''); setBannerDirty(true); if (imageInputRef.current) imageInputRef.current.value = ''; }}>Remover foto</button>
+      </div>}
       <div style={{ display: 'flex', gap: 8 }}>
         <button type="button" className={lotMode === 'single' ? 'btn-primary' : 'btn-secondary'} disabled={hasSavedLots} onClick={() => { setLotMode('single'); setLotsDirty(true); }}>Preço único</button>
         <button type="button" className={lotMode === 'lots' ? 'btn-primary' : 'btn-secondary'} onClick={() => { setLotMode('lots'); setLotsDirty(true); }}>Lotes de ingressos</button>
       </div>
-      {lotMode === 'single' && !existingLink.trim() && <label>Valor da inscrição (R$)
+      {lotMode === 'single' && !editingExisting && <label>Valor da inscrição (R$)
         <input className="form-input" type="number" min="0" step="0.01" value={price} onChange={e => setPrice(e.target.value)} required style={{ marginTop: 6 }} />
       </label>}
       {lotMode === 'lots' && <div style={{ display: 'grid', gap: 12 }}>
@@ -288,8 +330,8 @@ function QuickEventSetup({ onAdmin, onConfigure, onBackToEvent, onLinkReady, ini
           <label>Líderes<textarea className="form-input" rows="3" value={leadersText} onChange={e => setLeadersText(e.target.value)} placeholder="Um líder por linha" /></label>
         </div>
       </details>
-      {!setupCodeFromLink && (!existingLink.trim() || (lotMode === 'lots' && lotsDirty)) && <input className="form-input" value={code} onChange={e => setCode(e.target.value)} placeholder="Código inicial para salvar" required />}
-      <button className="btn-primary" disabled={busy}>{busy ? 'Salvando...' : existingLink.trim() ? 'Salvar e copiar link' : 'Criar evento e gerar link'}</button>
+      {!setupCodeFromLink && (!editingExisting || (lotMode === 'lots' && lotsDirty) || bannerDirty) && <input className="form-input" value={code} onChange={e => setCode(e.target.value)} placeholder="Código inicial para salvar" required />}
+      <button className="btn-primary" disabled={busy || bannerBusy}>{bannerBusy ? 'Preparando foto...' : busy ? 'Salvando...' : editingExisting ? 'Salvar e copiar link' : 'Criar evento e gerar link'}</button>
     </form>}
     {initialLink && <button className="btn-secondary" style={{ marginTop: 12 }} onClick={onBackToEvent}>Voltar às inscrições</button>}
     <button className="btn-secondary" style={{ marginTop: 12 }} onClick={onAdmin}>Painel administrativo (e-mail e senha)</button>
@@ -299,6 +341,7 @@ function QuickEventSetup({ onAdmin, onConfigure, onBackToEvent, onLinkReady, ini
 
 function SharedEventPage({ token = sharedToken, organizer = false, link = window.location.href, onManage }) {
   const [bundle, setBundle] = useState(null);
+  const [bannerData, setBannerData] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -308,12 +351,15 @@ function SharedEventPage({ token = sharedToken, organizer = false, link = window
       const data = await fetchSharedEvent(token);
       if (!data?.event) throw new Error('Evento não encontrado ou encerrado.');
       setBundle(data);
+      fetchEventBanner(token).then(photo => setBannerData(photo || '')).catch(() => {});
       setError('');
     } catch (e) { setError(e.message); }
     finally { setRefreshing(false); }
   };
   useEffect(() => {
     if (!token) { setError('Link de evento inválido.'); setLoading(false); return; }
+    setBannerData('');
+    fetchEventBanner(token).then(photo => setBannerData(photo || '')).catch(() => {});
     fetchSharedEvent(token)
       .then(data => { if (!data?.event) throw new Error('Evento não encontrado ou encerrado.'); setBundle(data); })
       .catch(e => setError(e.message))
@@ -330,6 +376,7 @@ function SharedEventPage({ token = sharedToken, organizer = false, link = window
     {organizer
       ? <Header event={displayEvent} soldOut={Boolean(bundle.has_ticket_lots && !currentLot)} attendeeCount={null} onOpenAdmin={onManage} onRefresh={refreshEvent} isRefreshing={refreshing} />
       : <header className="kiosk-header"><div className="event-info-pill"><div className="event-title-line">{bundle.event.name}</div><div className="event-meta-line">{bundle.event.date || ''} {bundle.event.location || ''}</div></div></header>}
+    {bannerData && <img className="event-banner" src={bannerData} alt={`Foto do evento ${bundle.event.name}`} />}
     <main style={{ flex: 1 }}>
       <RegistrationForm
         key={bundle.event.id}
@@ -458,6 +505,7 @@ export function App() {
     {currentScreen === 'kiosk' ? <>
       <Header event={adminCurrentLot ? { ...activeEvent, price: adminCurrentLot.price } : activeEvent} soldOut={Boolean(adminLotBundle?.has_ticket_lots && !adminCurrentLot)} attendeeCount={registrations.filter(r => r.event_id === activeEvent?.id).length} onOpenAdmin={() => setCurrentScreen('admin')} onRefresh={refresh} isRefreshing={isRefreshing} />
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        {activeEvent?.banner_data && <img className="event-banner" src={activeEvent.banner_data} alt={`Foto do evento ${activeEvent.name}`} />}
         {activeEvent ? <RegistrationForm key={activeEvent.id} events={[activeEvent]} networks={networks} disciplers={disciplers} leaders={leaders}
           ticketLots={adminLotBundle?.ticket_lots || []} hasTicketLots={Boolean(adminLotBundle?.has_ticket_lots)}
           onRefreshAvailability={() => fetchSharedEvent(activeEvent.share_token).then(setAdminLotBundle).catch(() => {})}

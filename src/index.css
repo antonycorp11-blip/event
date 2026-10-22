@@ -80,6 +80,16 @@ body {
   box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.5);
 }
 
+.event-banner {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-glass);
+  margin-bottom: 14px;
+}
+
 .event-info-pill {
   display: flex;
   flex-direction: column;

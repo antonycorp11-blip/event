@@ -62,9 +62,27 @@ export const createEventWithLots = async (code, event, lots) => result(await cli
   p_code: code.trim(), p_name: event.name.trim(), p_price: Number(lots[0]?.price) || 0,
   p_date: event.date?.trim() || '', p_location: event.location?.trim() || '', p_lots: lots
 }));
+export const createEventWithBanner = async (code, event, bannerData) => result(await client().rpc('create_event_with_banner', {
+  p_code: code.trim(), p_name: event.name.trim(), p_price: Number(event.price) || 0,
+  p_date: event.date?.trim() || '', p_location: event.location?.trim() || '', p_banner_data: bannerData
+}));
+export const createEventWithLotsAndBanner = async (code, event, lots, bannerData) => result(await client().rpc('create_event_with_lots_and_banner', {
+  p_code: code.trim(), p_name: event.name.trim(), p_price: Number(lots[0]?.price) || 0,
+  p_date: event.date?.trim() || '', p_location: event.location?.trim() || '',
+  p_lots: lots, p_banner_data: bannerData
+}));
 export const saveEventLotsWithSetupCode = async (code, token, lots) => result(await client().rpc('save_event_lots_with_setup_code', {
   p_code: code.trim(), p_token: token, p_lots: lots
 }));
+export const saveEventBannerWithSetupCode = async (code, token, bannerData) => result(await client().rpc('save_event_banner_with_setup_code', {
+  p_code: code.trim(), p_token: token, p_banner_data: bannerData
+}));
+export const fetchEventBanner = async (token) => {
+  const { data, error } = await client().rpc('get_event_banner', { p_token: token });
+  if (error?.code === 'PGRST202') return null;
+  if (error) throw new Error(error.message);
+  return data || null;
+};
 export const signOutAdmin = async () => { result(await client().auth.signOut()); };
 export const getAdminSession = async () => {
   const { data, error } = await client().auth.getSession();
