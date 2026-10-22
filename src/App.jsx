@@ -75,7 +75,8 @@ function Login({ onAuthenticate, onConfigure, error }) {
 }
 
 function QuickEventSetup({ onAdmin, onConfigure }) {
-  const [code, setCode] = useState('');
+  const setupCodeFromLink = new URLSearchParams(window.location.hash.slice(1)).get('setup') || '';
+  const [code, setCode] = useState(setupCodeFromLink);
   const [name, setName] = useState('');
   const [price, setPrice] = useState('0');
   const [date, setDate] = useState('');
@@ -85,7 +86,9 @@ function QuickEventSetup({ onAdmin, onConfigure }) {
   const [busy, setBusy] = useState(false);
   return <main className="glass-card" style={{ maxWidth: 560, margin: '5vh auto' }}>
     <h2>Criar evento e liberar inscrições</h2>
-    <p style={{ color: 'var(--text-muted)', margin: '12px 0' }}>Use o código inicial exibido ao executar o SQL no Supabase. Você poderá cadastrar a equipe depois.</p>
+    <p style={{ color: 'var(--text-muted)', margin: '12px 0' }}>
+      {setupCodeFromLink ? 'Preencha os dados do evento para gerar o link de inscrições.' : 'Informe os dados do evento. Você poderá cadastrar a equipe depois.'}
+    </p>
     {error && <p role="alert" style={{ color: '#fca5a5', marginBottom: 12 }}>{error}</p>}
     {link ? <div style={{ display: 'grid', gap: 12 }}>
       <p style={{ color: '#6ee7b7', fontWeight: 700 }}>Evento criado. Este é o link de inscrições:</p>
@@ -107,7 +110,7 @@ function QuickEventSetup({ onAdmin, onConfigure }) {
       <input className="form-input" type="number" min="0" step="0.01" value={price} onChange={e => setPrice(e.target.value)} placeholder="Valor da inscrição (R$)" required />
       <input className="form-input" value={date} onChange={e => setDate(e.target.value)} placeholder="Data (opcional)" />
       <input className="form-input" value={location} onChange={e => setLocation(e.target.value)} placeholder="Local (opcional)" />
-      <input className="form-input" value={code} onChange={e => setCode(e.target.value)} placeholder="Código inicial do SQL" required />
+      {!setupCodeFromLink && <input className="form-input" value={code} onChange={e => setCode(e.target.value)} placeholder="Código inicial do SQL" required />}
       <button className="btn-primary" disabled={busy}>{busy ? 'Criando...' : 'Criar evento e gerar link'}</button>
     </form>}
     <button className="btn-secondary" style={{ marginTop: 12 }} onClick={onAdmin}>Cadastrar ou entrar como equipe</button>
