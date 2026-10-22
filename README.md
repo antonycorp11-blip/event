@@ -4,13 +4,17 @@ Aplicativo React/Vite com dados no Supabase. A equipe usa a raiz `/`; cada event
 
 ## Colocar inscrições no ar
 
-1. No projeto Supabase `ojfnqcajbhvlqtprrfxg`, abra **SQL Editor** e execute todo o arquivo [supabase_schema.sql](./supabase_schema.sql). O resultado final mostra um `codigo_inicial`; guarde-o.
+1. No projeto Supabase `ojfnqcajbhvlqtprrfxg`, abra **SQL Editor** e execute todo o arquivo [supabase_urgente.sql](supabase_urgente.sql). O resultado final mostra um `codigo_inicial`; guarde-o. Se ele já foi executado, não repita esta etapa.
 2. Configure `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` no deploy. O `.env` local já está configurado. Nunca publique uma chave `service_role` no navegador.
-3. Abra a raiz do aplicativo publicado. Preencha **Cadastrar evento e equipe** com nome, valor, o `codigo_inicial` e as listas de redes, discipuladores e líderes. Copie o link completo gerado e compartilhe com os inscritos. Nenhuma conta de administrador é necessária nesta etapa.
+3. Abra a raiz do aplicativo publicado. Preencha **Eventos** com nome, valor ou lotes, o `codigo_inicial` e, se quiser, as listas de redes, discipuladores e líderes. Copie o link completo gerado e compartilhe com os inscritos. Nenhuma conta de administrador é necessária nesta etapa.
 4. Se já criou o evento, cole o link existente no campo **Já tem um evento?** e preencha as listas. O novo link inclui as opções no fragmento `#equipe=...`; substitua o link antigo ao divulgar. Essas opções não são gravadas no banco nesta etapa. Enquanto as listas estão vazias, o formulário permite digitar rede e discipulador.
-5. Quando for criar o acesso administrativo, clique em **Painel administrativo (e-mail e senha) → Criar primeiro acesso** e use o mesmo `codigo_inicial` com um e-mail e senha. Se o Supabase exigir confirmação por e-mail, confirme e depois entre com senha e código.
+5. O acesso administrativo por e-mail requer as funções e políticas adicionais de [supabase_schema.sql](supabase_schema.sql); essa etapa pode ser feita depois.
 
-O SQL cria as tabelas, as funções do formulário público, um código inicial aleatório e as regras de acesso. Ele substitui as políticas antigas nas tabelas do aplicativo. O código inicial também permite criar eventos até o cadastro do primeiro administrador; depois é apagado.
+## Lotes de ingressos
+
+Execute [supabase_lotes.sql](supabase_lotes.sql) uma vez no SQL Editor do mesmo projeto Supabase antes de criar lotes. Na tela **Eventos**, escolha **Lotes de ingressos** e informe nome, quantidade e valor de cada lote. O segundo lote começa automaticamente quando o primeiro esgota. A inscrição reserva a vaga no banco no momento do envio; inscrições simultâneas não ultrapassam a quantidade. Um evento já criado pode receber lotes ao colar seu link na tela **Eventos**. Nesse caso, a quantidade de cada novo lote vale para as próximas inscrições; as anteriores não são incluídas retroativamente. O formulário antigo de preço único continua funcionando sem essa migração.
+
+O SQL inicial cria as tabelas, as funções do formulário público, um código inicial aleatório e as regras de acesso. O código inicial permite criar eventos sem conta administrativa.
 
 ## Desenvolvimento e deploy
 

@@ -52,6 +52,7 @@ export const AdminView = ({
   onDeleteLeader,
   selectedEventId,
   onSelectEvent,
+  onManageLots,
   onSignOut
 }) => {
   const [activeTab, setActiveTab] = useState('attendees'); // 'attendees' | 'event' | 'lists' | 'database'
@@ -728,6 +729,10 @@ export const AdminView = ({
                           {item.leader || '(Em branco)'}
                         </span>
                       </div>
+                      {item.ticket_lot_name && <div>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)', display: 'block' }}>Ingresso</span>
+                        <span style={{ color: '#f1f5f9', fontWeight: 600 }}>{item.ticket_lot_name} · R$ {Number(item.ticket_price || 0).toFixed(2).replace('.', ',')}</span>
+                      </div>}
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '4px' }}>
@@ -774,6 +779,7 @@ export const AdminView = ({
                   try { await navigator.clipboard.writeText(link); alert('Link do evento copiado.'); }
                   catch (_) { window.prompt('Copie o link do evento:', link); }
                 }}>Copiar link exclusivo</button>
+                {event.share_token && <button type="button" className="btn-secondary" onClick={() => onManageLots?.(event)}>Gerenciar lotes</button>}
               </div>
             </div>)}
             <button type="button" className="btn-primary" onClick={() => {

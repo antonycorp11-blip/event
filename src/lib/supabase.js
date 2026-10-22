@@ -58,6 +58,13 @@ export const createEventWithSetupCode = async (code, event) => result(await clie
   p_code: code.trim(), p_name: event.name.trim(), p_price: Number(event.price) || 0,
   p_date: event.date?.trim() || '', p_location: event.location?.trim() || ''
 }));
+export const createEventWithLots = async (code, event, lots) => result(await client().rpc('create_event_with_lots', {
+  p_code: code.trim(), p_name: event.name.trim(), p_price: Number(lots[0]?.price) || 0,
+  p_date: event.date?.trim() || '', p_location: event.location?.trim() || '', p_lots: lots
+}));
+export const saveEventLotsWithSetupCode = async (code, token, lots) => result(await client().rpc('save_event_lots_with_setup_code', {
+  p_code: code.trim(), p_token: token, p_lots: lots
+}));
 export const signOutAdmin = async () => { result(await client().auth.signOut()); };
 export const getAdminSession = async () => {
   const { data, error } = await client().auth.getSession();
@@ -108,13 +115,18 @@ export const deleteRegistration = async (id) => result(await client().from('regi
 
 // These RPCs expose only one event and its form options to a holder of its link.
 export const fetchSharedEvent = async (token) => result(await client().rpc('get_shared_event', { p_token: token }));
-export const createSharedRegistration = async (token, registration) => result(await client().rpc('register_for_event', {
-  p_token: token,
-  p_name: registration.name.trim(), p_birth_date: registration.birth_date,
-  p_network: registration.network, p_discipler: registration.discipler,
-  p_leader: registration.leader?.trim() || '', p_payment_method: registration.payment_method,
-  p_phone: registration.phone?.trim() || ''
-}));
+export const createSharedRegistration = async (token, registration) => {
+  const payload = {
+    p_token: token,
+    p_name: registration.name.trim(), p_birth_date: registration.birth_date,
+    p_network: registration.network, p_discipler: registration.discipler,
+    p_leader: registration.leader?.trim() || '', p_payment_method: registration.payment_method,
+    p_phone: registration.phone?.trim() || ''
+  };
+  // O RPC antigo continua servindo eventos sem lotes até a migração ser aplicada.
+  if (registration.ticket_lot_id) payload.p_lot_id = registration.ticket_lot_id;
+  return result(await client().rpc('register_for_event', payload));
+};
 
 export const syncLocalToCloud = async () => {
   let synced = 0;

@@ -4,13 +4,14 @@ import { Calendar, Settings, Flame, RefreshCw } from 'lucide-react';
 export const Header = ({
   event,
   attendeeCount,
+  soldOut = false,
   onOpenAdmin,
   onRefresh,
   isRefreshing
 }) => {
   const activeEvent = event || { name: 'Conferência 2026', price: 0 };
-  const priceFormatted = Number(activeEvent.price) > 0 
-    ? `R$ ${Number(activeEvent.price).toFixed(2).replace('.', ',')}` 
+  const priceFormatted = soldOut ? 'Esgotado' : Number(activeEvent.price) > 0
+    ? `R$ ${Number(activeEvent.price).toFixed(2).replace('.', ',')}`
     : 'Gratuito';
 
   return (
@@ -22,10 +23,10 @@ export const Header = ({
         </div>
         <div className="event-meta-line">
           <span className="price-pill">{priceFormatted}</span>
-          <span className="counter-pill">
+          {attendeeCount != null && <span className="counter-pill">
             <Flame size={12} style={{ color: '#f59e0b' }} />
             <span>{attendeeCount} {attendeeCount === 1 ? 'inscrito' : 'inscritos'}</span>
-          </span>
+          </span>}
         </div>
       </div>
 

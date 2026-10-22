@@ -5,7 +5,7 @@ import { AdminView } from './components/AdminView';
 import {
   getSupabaseConfig, saveSupabaseConfig, testSupabaseConnection,
   getAdminSession, signInAdmin, signOutAdmin, registerAdminAccount, claimFirstAdmin,
-  createEventWithSetupCode,
+  createEventWithSetupCode, createEventWithLots, saveEventLotsWithSetupCode,
   fetchEvents, fetchNetworks, fetchDisciplers, fetchLeaders, fetchRegistrations,
   createRegistration, createSharedRegistration, fetchSharedEvent,
   deleteRegistration, updateRegistrationStatus, addNetwork, deleteNetwork,
@@ -26,6 +26,11 @@ function namesFromLink(url, key) {
     const names = raw ? JSON.parse(raw)?.[key] : null;
     return Array.isArray(names) ? names.filter(name => typeof name === 'string').slice(0, 50) : [];
   } catch (_) { return []; }
+}
+
+function textFromLink(link, key) {
+  try { return namesFromLink(new URL(link), key).join('\n'); }
+  catch (_) { return ''; }
 }
 
 function eventLink(token, networks, disciplers, leaders) {
@@ -52,8 +57,8 @@ function validateTeamLists(networks, disciplers, leaders) {
   }
 }
 
-function listsForSharedEvent(bundle) {
-  const url = new URL(window.location.href);
+function listsForSharedEvent(bundle, link = window.location.href) {
+  const url = new URL(link);
   const asOptions = names => names.map((name, index) => ({ id: `link-${index}-${name}`, name }));
   const networks = namesFromLink(url, 'redes');
   const disciplers = namesFromLink(url, 'discipuladores');
@@ -63,6 +68,24 @@ function listsForSharedEvent(bundle) {
     disciplers: disciplers.length ? asOptions(disciplers) : bundle.disciplers,
     leaders: leaders.length ? asOptions(leaders) : bundle.leaders,
   };
+}
+
+const starterLots = () => [
+  { name: '1º lote', quantity: '', price: '' },
+  { name: '2º lote', quantity: '', price: '' },
+];
+
+function checkedLots(rows) {
+  if (rows.length < 1 || rows.length > 20) throw new Error('Informe de 1 a 20 lotes.');
+  return rows.map((row, index) => {
+    const name = row.name.trim();
+    const quantity = Number(row.quantity);
+    const price = Number(row.price);
+    if (!name || name.length > 80) throw new Error(`Nome inválido no ${index + 1}º lote.`);
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 1000000) throw new Error(`Quantidade inválida no ${index + 1}º lote.`);
+    if (!/^\d+(?:\.\d{1,2})?$/.test(String(row.price)) || !Number.isFinite(price) || price > 99999999) throw new Error(`Valor inválido no ${index + 1}º lote.`);
+    return { ...(row.id ? { id: row.id } : {}), name, quantity, price };
+  });
 }
 
 function Setup({ initialError = '' }) {
@@ -124,54 +147,103 @@ function Login({ onAuthenticate, onConfigure, error }) {
   </main>;
 }
 
-function QuickEventSetup({ onAdmin, onConfigure }) {
+function QuickEventSetup({ onAdmin, onConfigure, onBackToEvent, onLinkReady, initialLink = '' }) {
   const setupCodeFromLink = new URLSearchParams(window.location.hash.slice(1)).get('setup') || '';
   const [code, setCode] = useState(setupCodeFromLink);
   const [name, setName] = useState('');
   const [price, setPrice] = useState('0');
   const [date, setDate] = useState('');
   const [location, setLocation] = useState('');
-  const [networksText, setNetworksText] = useState('');
-  const [disciplersText, setDisciplersText] = useState('');
-  const [leadersText, setLeadersText] = useState('');
-  const [existingLink, setExistingLink] = useState('');
+  const [networksText, setNetworksText] = useState(() => textFromLink(initialLink, 'redes'));
+  const [disciplersText, setDisciplersText] = useState(() => textFromLink(initialLink, 'discipuladores'));
+  const [leadersText, setLeadersText] = useState(() => textFromLink(initialLink, 'lideres'));
+  const [existingLink, setExistingLink] = useState(initialLink);
+  const [lotMode, setLotMode] = useState('single');
+  const [lotRows, setLotRows] = useState(starterLots);
+  const [lotsDirty, setLotsDirty] = useState(false);
+  const [hasSavedLots, setHasSavedLots] = useState(false);
   const [link, setLink] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!existingLink.trim()) { setHasSavedLots(false); return; }
+    let url;
+    try { url = new URL(existingLink.trim()); } catch (_) { return; }
+    const token = url.origin === window.location.origin ? url.pathname.match(eventPath)?.[1] : null;
+    if (!token) return;
+    let cancelled = false;
+    fetchSharedEvent(token).then(data => {
+      if (cancelled || !data?.event) return;
+      const lots = data.ticket_lots || [];
+      setHasSavedLots(Boolean(data.has_ticket_lots));
+      setLotMode(lots.length ? 'lots' : 'single');
+      setLotRows(lots.length ? lots.map(({ id, name, quantity, price, sold }) => ({ id, name, quantity: String(quantity), price: String(price), sold })) : starterLots());
+      setLotsDirty(false);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [existingLink]);
+  const changeLot = (index, field, value) => {
+    setLotsDirty(true);
+    setLotRows(rows => rows.map((row, rowIndex) => rowIndex === index ? { ...row, [field]: value } : row));
+  };
+  const reset = () => {
+    setLink(''); setName(''); setPrice('0'); setDate(''); setLocation('');
+    setNetworksText(''); setDisciplersText(''); setLeadersText(''); setExistingLink('');
+    setLotMode('single'); setLotRows(starterLots()); setLotsDirty(false); setHasSavedLots(false);
+  };
   return <main className="glass-card" style={{ maxWidth: 560, margin: '5vh auto' }}>
-    <h2>Cadastrar evento e equipe</h2>
+    <h2>Eventos</h2>
     <p style={{ color: 'var(--text-muted)', margin: '12px 0' }}>
-      Cadastre o evento e as opções da equipe que aparecerão no formulário de inscrições.
+      Crie o evento, defina o valor ou os lotes e copie o link de inscrições.
     </p>
     {error && <p role="alert" style={{ color: '#fca5a5', marginBottom: 12 }}>{error}</p>}
     {link ? <div style={{ display: 'grid', gap: 12 }}>
-      <p style={{ color: '#6ee7b7', fontWeight: 700 }}>Evento criado. Este é o link de inscrições:</p>
+      <p style={{ color: '#6ee7b7', fontWeight: 700 }}>Link de inscrições pronto:</p>
       <a href={link} style={{ color: '#a5b4fc', overflowWrap: 'anywhere' }}>{link}</a>
       <p style={{ color: 'var(--text-muted)' }}>Compartilhe este link completo. Se alterar a equipe depois, compartilhe o novo link.</p>
       <button className="btn-primary" onClick={async () => {
         try { await navigator.clipboard.writeText(link); alert('Link copiado.'); }
         catch (_) { window.prompt('Copie o link:', link); }
       }}>Copiar link</button>
-      <button className="btn-secondary" onClick={() => { setLink(''); setName(''); setPrice('0'); setDate(''); setLocation(''); setNetworksText(''); setDisciplersText(''); setLeadersText(''); setExistingLink(''); }}>Preparar outro link</button>
+      <a className="btn-secondary" href={link} style={{ textAlign: 'center', textDecoration: 'none' }}>Abrir inscrições</a>
+      <button className="btn-secondary" onClick={reset}>Preparar outro evento</button>
     </div> : <form onSubmit={async e => {
       e.preventDefault(); setBusy(true); setError('');
       try {
         validateTeamLists(networksText, disciplersText, leadersText);
+        const lots = lotMode === 'lots' ? checkedLots(lotRows) : [];
         let token;
         if (existingLink.trim()) {
           const url = new URL(existingLink.trim());
           if (url.origin !== window.location.origin) throw new Error('Cole o link deste site para o evento.');
           token = url.pathname.match(eventPath)?.[1];
           if (!token || !(await fetchSharedEvent(token))?.event) throw new Error('Evento não encontrado nesse link.');
+          if (lotsDirty && lotMode === 'lots') {
+            if (!code.trim()) throw new Error('Informe o código inicial para salvar os lotes.');
+            await saveEventLotsWithSetupCode(code, token, lots);
+          }
+          if (lotsDirty && lotMode === 'single' && hasSavedLots) throw new Error('Um evento com lotes não pode voltar ao preço único.');
         } else {
-          const saved = await createEventWithSetupCode(code, { name, price, date, location });
+          const saved = lotMode === 'lots'
+            ? await createEventWithLots(code, { name, date, location }, lots)
+            : await createEventWithSetupCode(code, { name, price, date, location });
           token = saved.share_token;
         }
-        setLink(eventLink(token, networksText, disciplersText, leadersText));
-      } catch (err) { setError(err.message); }
+        const completedLink = eventLink(token, networksText, disciplersText, leadersText);
+        localStorage.setItem('event_last_link', completedLink);
+        onLinkReady?.(completedLink);
+        setLink(completedLink);
+      } catch (err) {
+        setError(/create_event_with_lots|save_event_lots_with_setup_code|PGRST202|schema cache/i.test(err.message)
+          ? 'A função de lotes ainda não está ativa no Supabase. Execute supabase_lotes.sql uma vez no SQL Editor.'
+          : err.message);
+      }
       finally { setBusy(false); }
     }} style={{ display: 'grid', gap: 12 }}>
-      <label style={{ fontWeight: 700 }}>Evento</label>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+        <label style={{ fontWeight: 700 }}>Evento</label>
+        {existingLink.trim() && <button type="button" className="btn-secondary" style={{ width: 'auto' }} onClick={reset}>Novo evento</button>}
+      </div>
       <input className="form-input" type="url" value={existingLink} onChange={e => {
         const value = e.target.value;
         setExistingLink(value);
@@ -184,50 +256,91 @@ function QuickEventSetup({ onAdmin, onConfigure }) {
       }} placeholder="Já tem um evento? Cole o link aqui" />
       {!existingLink.trim() && <>
         <input className="form-input" value={name} onChange={e => setName(e.target.value)} placeholder="Nome do novo evento" required />
-        <input className="form-input" type="number" min="0" step="0.01" value={price} onChange={e => setPrice(e.target.value)} placeholder="Valor da inscrição (R$)" required />
         <input className="form-input" value={date} onChange={e => setDate(e.target.value)} placeholder="Data (opcional)" />
         <input className="form-input" value={location} onChange={e => setLocation(e.target.value)} placeholder="Local (opcional)" />
-        {!setupCodeFromLink && <input className="form-input" value={code} onChange={e => setCode(e.target.value)} placeholder="Código inicial" required />}
       </>}
-      <h3 style={{ marginTop: 8 }}>Equipe do evento</h3>
-      <p style={{ color: 'var(--text-muted)' }}>Escreva um nome por linha. As listas serão incluídas no link de inscrições.</p>
-      <label>Redes
-        <textarea className="form-input" rows="3" value={networksText} onChange={e => setNetworksText(e.target.value)} placeholder="Uma rede por linha" style={{ width: '100%', marginTop: 6 }} />
-      </label>
-      <label>Discipuladores
-        <textarea className="form-input" rows="3" value={disciplersText} onChange={e => setDisciplersText(e.target.value)} placeholder="Um discipulador por linha" style={{ width: '100%', marginTop: 6 }} />
-      </label>
-      <label>Líderes
-        <textarea className="form-input" rows="3" value={leadersText} onChange={e => setLeadersText(e.target.value)} placeholder="Um líder por linha" style={{ width: '100%', marginTop: 6 }} />
-      </label>
-      <button className="btn-primary" disabled={busy}>{busy ? 'Preparando...' : existingLink.trim() ? 'Atualizar link com a equipe' : 'Criar evento e gerar link'}</button>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button type="button" className={lotMode === 'single' ? 'btn-primary' : 'btn-secondary'} disabled={hasSavedLots} onClick={() => { setLotMode('single'); setLotsDirty(true); }}>Preço único</button>
+        <button type="button" className={lotMode === 'lots' ? 'btn-primary' : 'btn-secondary'} onClick={() => { setLotMode('lots'); setLotsDirty(true); }}>Lotes de ingressos</button>
+      </div>
+      {lotMode === 'single' && !existingLink.trim() && <label>Valor da inscrição (R$)
+        <input className="form-input" type="number" min="0" step="0.01" value={price} onChange={e => setPrice(e.target.value)} required style={{ marginTop: 6 }} />
+      </label>}
+      {lotMode === 'lots' && <div style={{ display: 'grid', gap: 12 }}>
+        <p style={{ color: 'var(--text-muted)' }}>Os lotes são vendidos em ordem. O próximo preço entra quando o anterior esgotar.</p>
+        {lotRows.map((row, index) => <div key={row.id || index} style={{ border: '1px solid var(--border-glass)', borderRadius: 10, padding: 12, display: 'grid', gap: 8 }}>
+          <strong>Lote {index + 1}{row.sold ? ` · ${row.sold} já inscritos` : ''}</strong>
+          <input className="form-input" value={row.name} onChange={e => changeLot(index, 'name', e.target.value)} placeholder="Nome do lote" required maxLength={80} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <label>Quantidade<input className="form-input" type="number" min={Math.max(1, Number(row.sold) || 1)} max="1000000" step="1" value={row.quantity} onChange={e => changeLot(index, 'quantity', e.target.value)} required /></label>
+            <label>Valor (R$)<input className="form-input" type="number" min="0" step="0.01" value={row.price} onChange={e => changeLot(index, 'price', e.target.value)} required /></label>
+          </div>
+          {lotRows.length > 1 && <button type="button" className="btn-secondary" onClick={() => { setLotsDirty(true); setLotRows(rows => rows.filter((_, rowIndex) => rowIndex !== index)); }}>Remover lote</button>}
+        </div>)}
+        <button type="button" className="btn-secondary" disabled={lotRows.length >= 20} onClick={() => { setLotsDirty(true); setLotRows(rows => [...rows, { name: `${rows.length + 1}º lote`, quantity: '', price: '' }]); }}>+ Adicionar lote</button>
+      </div>}
+      <details style={{ border: '1px solid var(--border-glass)', borderRadius: 10, padding: 12 }}>
+        <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Redes, discipuladores e líderes</summary>
+        <p style={{ color: 'var(--text-muted)', margin: '12px 0' }}>Um nome por linha. As opções ficam no link gerado.</p>
+        <div style={{ display: 'grid', gap: 10 }}>
+          <label>Redes<textarea className="form-input" rows="3" value={networksText} onChange={e => setNetworksText(e.target.value)} placeholder="Uma rede por linha" /></label>
+          <label>Discipuladores<textarea className="form-input" rows="3" value={disciplersText} onChange={e => setDisciplersText(e.target.value)} placeholder="Um discipulador por linha" /></label>
+          <label>Líderes<textarea className="form-input" rows="3" value={leadersText} onChange={e => setLeadersText(e.target.value)} placeholder="Um líder por linha" /></label>
+        </div>
+      </details>
+      {!setupCodeFromLink && (!existingLink.trim() || (lotMode === 'lots' && lotsDirty)) && <input className="form-input" value={code} onChange={e => setCode(e.target.value)} placeholder="Código inicial para salvar" required />}
+      <button className="btn-primary" disabled={busy}>{busy ? 'Salvando...' : existingLink.trim() ? 'Salvar e copiar link' : 'Criar evento e gerar link'}</button>
     </form>}
+    {initialLink && <button className="btn-secondary" style={{ marginTop: 12 }} onClick={onBackToEvent}>Voltar às inscrições</button>}
     <button className="btn-secondary" style={{ marginTop: 12 }} onClick={onAdmin}>Painel administrativo (e-mail e senha)</button>
     <button className="btn-secondary" style={{ marginTop: 12 }} onClick={onConfigure}>Alterar Supabase</button>
   </main>;
 }
 
-function SharedEventPage() {
+function SharedEventPage({ token = sharedToken, organizer = false, link = window.location.href, onManage }) {
   const [bundle, setBundle] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshEvent = async () => {
+    setRefreshing(true);
+    try {
+      const data = await fetchSharedEvent(token);
+      if (!data?.event) throw new Error('Evento não encontrado ou encerrado.');
+      setBundle(data);
+      setError('');
+    } catch (e) { setError(e.message); }
+    finally { setRefreshing(false); }
+  };
   useEffect(() => {
-    if (!sharedToken) { setError('Link de evento inválido.'); setLoading(false); return; }
-    fetchSharedEvent(sharedToken)
+    if (!token) { setError('Link de evento inválido.'); setLoading(false); return; }
+    fetchSharedEvent(token)
       .then(data => { if (!data?.event) throw new Error('Evento não encontrado ou encerrado.'); setBundle(data); })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [token]);
   if (loading) return <main className="glass-card">Carregando evento...</main>;
   if (error) return <main className="glass-card" role="alert">{error}</main>;
-  const lists = listsForSharedEvent(bundle);
+  const lists = listsForSharedEvent(bundle, link);
+  const currentLot = [...(bundle.ticket_lots || [])]
+    .sort((a, b) => Number(a.position) - Number(b.position))
+    .find(lot => Number(lot.remaining) > 0);
+  const displayEvent = { ...bundle.event, price: currentLot?.price ?? bundle.event.price };
   return <div className="app-container">
-    <header className="kiosk-header"><div className="event-info-pill"><div className="event-title-line">{bundle.event.name}</div><div className="event-meta-line">{bundle.event.date || ''} {bundle.event.location || ''}</div></div></header>
+    {organizer
+      ? <Header event={displayEvent} soldOut={Boolean(bundle.has_ticket_lots && !currentLot)} attendeeCount={null} onOpenAdmin={onManage} onRefresh={refreshEvent} isRefreshing={refreshing} />
+      : <header className="kiosk-header"><div className="event-info-pill"><div className="event-title-line">{bundle.event.name}</div><div className="event-meta-line">{bundle.event.date || ''} {bundle.event.location || ''}</div></div></header>}
     <main style={{ flex: 1 }}>
       <RegistrationForm
         key={bundle.event.id}
         events={[bundle.event]} networks={lists.networks} disciplers={lists.disciplers} leaders={lists.leaders}
-        publicMode onSubmit={reg => createSharedRegistration(sharedToken, reg)}
+        ticketLots={bundle.ticket_lots || []} hasTicketLots={Boolean(bundle.has_ticket_lots)}
+        onRefreshAvailability={refreshEvent}
+        publicMode onSubmit={async reg => {
+          const saved = await createSharedRegistration(token, reg);
+          fetchSharedEvent(token).then(setBundle).catch(() => {});
+          return saved;
+        }}
       />
     </main>
   </div>;
@@ -242,6 +355,9 @@ export function App() {
   const [disciplers, setDisciplers] = useState([]);
   const [leaders, setLeaders] = useState([]);
   const [registrations, setRegistrations] = useState([]);
+  const [localLink, setLocalLink] = useState(() => localStorage.getItem('event_last_link') || '');
+  const [adminLotBundle, setAdminLotBundle] = useState(null);
+  const [canReturnAdmin, setCanReturnAdmin] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState(() => localStorage.getItem('event_selected_id'));
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [toast, setToast] = useState(null);
@@ -266,7 +382,20 @@ export function App() {
       if (admin) {
         try { await loadAllData(); setStatus('ready'); }
         catch (e) { setError(e.message); setStatus('data-error'); }
-      } else setStatus('quickstart');
+      } else {
+        const setupRequested = new URLSearchParams(window.location.hash.slice(1)).has('setup');
+        const savedLink = localStorage.getItem('event_last_link') || '';
+        if (!setupRequested && savedLink) {
+          try {
+            const url = new URL(savedLink);
+            const token = url.origin === window.location.origin ? url.pathname.match(eventPath)?.[1] : null;
+            if (token && (await fetchSharedEvent(token))?.event) {
+              setLocalLink(savedLink); setStatus('local-event'); return;
+            }
+          } catch (_) { /* Link salvo não está mais disponível. */ }
+        }
+        setStatus('quickstart');
+      }
     })();
     return () => { cancelled = true; };
   }, [loadAllData]);
@@ -301,21 +430,45 @@ export function App() {
   };
   const selectEvent = id => { setSelectedEventId(id); localStorage.setItem('event_selected_id', id); };
   const activeEvent = events.find(e => e.id === selectedEventId) || events[0];
+  useEffect(() => {
+    if (status !== 'ready' || !activeEvent?.share_token) { setAdminLotBundle(null); return; }
+    let cancelled = false;
+    fetchSharedEvent(activeEvent.share_token)
+      .then(data => { if (!cancelled) setAdminLotBundle(data); })
+      .catch(() => { if (!cancelled) setAdminLotBundle(null); });
+    return () => { cancelled = true; };
+  }, [status, activeEvent?.share_token]);
+  const adminCurrentLot = [...(adminLotBundle?.ticket_lots || [])]
+    .sort((a, b) => Number(a.position) - Number(b.position))
+    .find(lot => Number(lot.remaining) > 0);
 
   if (isSharedPath) return <SharedEventPage />;
   if (status === 'checking') return <main className="glass-card">Verificando Supabase...</main>;
   if (status === 'setup') return <Setup initialError={error} />;
-  if (status === 'quickstart') return <QuickEventSetup onAdmin={() => setStatus('login')} onConfigure={() => setStatus('setup')} />;
+  if (status === 'local-event') {
+    const token = new URL(localLink).pathname.match(eventPath)?.[1];
+    return <SharedEventPage token={token} organizer link={localLink} onManage={() => setStatus('quickstart')} />;
+  }
+  if (status === 'quickstart') return <QuickEventSetup initialLink={localLink} onLinkReady={setLocalLink} onBackToEvent={() => setStatus(canReturnAdmin ? 'ready' : 'local-event')} onAdmin={() => setStatus(canReturnAdmin ? 'ready' : 'login')} onConfigure={() => setStatus('setup')} />;
   if (status === 'login') return <Login onAuthenticate={onAuthenticate} onConfigure={() => setStatus('setup')} error={error} />;
   if (status === 'data-error') return <main className="glass-card" role="alert"><h2>Falha ao carregar dados</h2><p>{error}</p><button className="btn-primary" onClick={() => window.location.reload()}>Tentar novamente</button><button className="btn-secondary" onClick={() => setStatus('setup')}>Configurar Supabase</button></main>;
 
   return <div className="app-container">
     {error && <div className="toast-container"><div className="toast error" role="alert">{error}</div></div>}
     {currentScreen === 'kiosk' ? <>
-      <Header event={activeEvent} attendeeCount={registrations.filter(r => r.event_id === activeEvent?.id).length} onOpenAdmin={() => setCurrentScreen('admin')} onRefresh={refresh} isRefreshing={isRefreshing} />
+      <Header event={adminCurrentLot ? { ...activeEvent, price: adminCurrentLot.price } : activeEvent} soldOut={Boolean(adminLotBundle?.has_ticket_lots && !adminCurrentLot)} attendeeCount={registrations.filter(r => r.event_id === activeEvent?.id).length} onOpenAdmin={() => setCurrentScreen('admin')} onRefresh={refresh} isRefreshing={isRefreshing} />
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         {activeEvent ? <RegistrationForm key={activeEvent.id} events={[activeEvent]} networks={networks} disciplers={disciplers} leaders={leaders}
-          onSubmit={async reg => { const item = await createRegistration(reg); setRegistrations(prev => [item, ...prev]); return item; }}
+          ticketLots={adminLotBundle?.ticket_lots || []} hasTicketLots={Boolean(adminLotBundle?.has_ticket_lots)}
+          onRefreshAvailability={() => fetchSharedEvent(activeEvent.share_token).then(setAdminLotBundle).catch(() => {})}
+          onSubmit={async reg => {
+            const item = adminLotBundle?.has_ticket_lots
+              ? { ...reg, id: await createSharedRegistration(activeEvent.share_token, reg) }
+              : await createRegistration(reg);
+            setRegistrations(prev => [item, ...prev]);
+            if (adminLotBundle?.has_ticket_lots) fetchSharedEvent(activeEvent.share_token).then(setAdminLotBundle).catch(() => {});
+            return item;
+          }}
           onConfirmPaymentStatus={async (id, state) => { await updateRegistrationStatus(id, state); setRegistrations(prev => prev.map(r => r.id === id ? { ...r, payment_status: state } : r)); }} />
           : <div className="glass-card">Nenhum evento cadastrado. Abra o painel Admin para criar o primeiro.</div>}
       </main>
@@ -324,6 +477,14 @@ export function App() {
         onBack={() => setCurrentScreen('kiosk')} onRefresh={refresh} isRefreshing={isRefreshing}
         registrations={registrations} events={events} networks={networks} disciplers={disciplers} leaders={leaders}
         selectedEventId={activeEvent?.id} onSelectEvent={selectEvent}
+        onManageLots={event => {
+          const saved = localStorage.getItem('event_last_link') || '';
+          const matching = saved.includes(`/e/${event.share_token}`);
+          const eventUrl = matching ? saved : `${window.location.origin}/e/${event.share_token}`;
+          setLocalLink(eventUrl);
+          setCanReturnAdmin(true);
+          setStatus('quickstart');
+        }}
         onDeleteRegistration={async id => { await deleteRegistration(id); setRegistrations(prev => prev.filter(r => r.id !== id)); }}
         onToggleStatus={async (id, state) => { await updateRegistrationStatus(id, state); setRegistrations(prev => prev.map(r => r.id === id ? { ...r, payment_status: state } : r)); }}
         onAddNetwork={async name => { const item = await addNetwork(name); setNetworks(prev => [...prev, item]); }}

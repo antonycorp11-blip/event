@@ -35,8 +35,11 @@ export const RegistrationForm = ({
   networks = [],
   disciplers = [],
   leaders = [],
+  ticketLots = [],
+  hasTicketLots = false,
   publicMode = false,
   onSubmit,
+  onRefreshAvailability,
   onConfirmPaymentStatus
 }) => {
   const [step, setStep] = useState(1);
@@ -67,8 +70,15 @@ export const RegistrationForm = ({
     };
   }, [events]);
 
-  const priceFormatted = Number(activeEvent.price) > 0
-    ? `R$ ${Number(activeEvent.price).toFixed(2).replace('.', ',')}`
+  const activeLot = useMemo(() => [...ticketLots]
+    .sort((a, b) => Number(a.position) - Number(b.position))
+    .find(lot => Number(lot.remaining) > 0), [ticketLots]);
+  const soldOut = hasTicketLots && !activeLot;
+  const currentPrice = activeLot ? activeLot.price : activeEvent.price;
+
+  const shownPrice = currentRegistration?.ticket_price ?? currentPrice;
+  const priceFormatted = Number(shownPrice) > 0
+    ? `R$ ${Number(shownPrice).toFixed(2).replace('.', ',')}`
     : 'Gratuito';
 
   const calculatedAge = useMemo(() => {
@@ -203,7 +213,10 @@ export const RegistrationForm = ({
       leader: leader.trim(),
       payment_method: selectedPayment,
       payment_status: 'Pendente',
-      phone: phone.trim()
+      phone: phone.trim(),
+      ticket_lot_id: activeLot?.id || null,
+      ticket_lot_name: activeLot?.name || null,
+      ticket_price: currentPrice
     };
 
     try {
@@ -212,6 +225,7 @@ export const RegistrationForm = ({
       setPaymentFlowState(publicMode ? 'public_completed' : 'waiting_payment');
     } catch (err) {
       alert('Erro ao iniciar inscrição: ' + (err.message || 'tente novamente.'));
+      if (/lote mudou|ingressos esgotados/i.test(err.message || '')) onRefreshAvailability?.();
     } finally {
       setIsSubmitting(false);
     }
@@ -259,6 +273,14 @@ export const RegistrationForm = ({
         <img src="/pix_qrcode.jpg" alt="QR Code PIX para pagamento" style={{ width: 210, maxWidth: '100%', margin: '16px auto' }} />
       </div>}
       <button type="button" className="btn-primary" style={{ marginTop: 18 }} onClick={handleStartNextPerson}>Nova inscrição neste evento</button>
+    </div>;
+  }
+
+  if (soldOut && paymentFlowState === 'idle') {
+    return <div className="wizard-card" style={{ textAlign: 'center' }}>
+      <h2>Ingressos esgotados</h2>
+      <p style={{ color: 'var(--text-muted)', marginTop: 10 }}>Não há vagas disponíveis para este evento no momento.</p>
+      <button className="btn-secondary" style={{ marginTop: 18 }} onClick={() => window.location.reload()}>Atualizar disponibilidade</button>
     </div>;
   }
 
@@ -541,6 +563,9 @@ export const RegistrationForm = ({
 
   return (
     <div className="wizard-card">
+      {activeLot && <div style={{ color: '#a5b4fc', fontWeight: 700, marginBottom: 12, textAlign: 'center' }}>
+        {activeLot.name} · {Number(activeLot.remaining)} {Number(activeLot.remaining) === 1 ? 'vaga' : 'vagas'} · {priceFormatted}
+      </div>}
       {/* Progresso Superior */}
       <div className="progress-container">
         <div className="progress-header">
