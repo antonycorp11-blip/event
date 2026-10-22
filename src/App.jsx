@@ -139,7 +139,7 @@ function QuickEventSetup({ onAdmin, onConfigure }) {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   return <main className="glass-card" style={{ maxWidth: 560, margin: '5vh auto' }}>
-    <h2>Criar evento e liberar inscrições</h2>
+    <h2>Cadastrar evento e equipe</h2>
     <p style={{ color: 'var(--text-muted)', margin: '12px 0' }}>
       Cadastre o evento e as opções da equipe que aparecerão no formulário de inscrições.
     </p>
@@ -202,7 +202,7 @@ function QuickEventSetup({ onAdmin, onConfigure }) {
       </label>
       <button className="btn-primary" disabled={busy}>{busy ? 'Preparando...' : existingLink.trim() ? 'Atualizar link com a equipe' : 'Criar evento e gerar link'}</button>
     </form>}
-    <button className="btn-secondary" style={{ marginTop: 12 }} onClick={onAdmin}>Cadastrar ou entrar como equipe</button>
+    <button className="btn-secondary" style={{ marginTop: 12 }} onClick={onAdmin}>Painel administrativo (e-mail e senha)</button>
     <button className="btn-secondary" style={{ marginTop: 12 }} onClick={onConfigure}>Alterar Supabase</button>
   </main>;
 }
