@@ -50,7 +50,9 @@ export const signInAdmin = async (email, password) => {
 export const registerAdminAccount = async (email, password) => {
   const { data, error } = await client().auth.signUp({ email, password });
   if (error) throw new Error(/already registered/i.test(error.message) ? 'Este e-mail já tem acesso. Toque em Entrar.' : error.message);
-  if (!data.session) result(await client().auth.signInWithPassword({ email, password }));
+  if (data.session) return;
+  const login = await client().auth.signInWithPassword({ email, password });
+  if (login.error) throw new Error('Este e-mail já tem cadastro com outra senha. Entre com a senha antiga ou use outro e-mail.');
 };
 // O primeiro e-mail que entra vira administrador; os demais são recusados.
 export const claimFirstAdmin = async () => result(await client().rpc('claim_first_admin', { p_code: '' }));
