@@ -23,8 +23,26 @@ import confetti from 'canvas-confetti';
 
 const TOTAL_STEPS = 7;
 
+const PIX_KEY = '05902198127';
+const RECEIPT_WHATSAPP = '5565992786131';
+const RECEIPT_WHATSAPP_LABEL = '(65) 99278-6131';
+
+function PixKeyBox() {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(PIX_KEY); setCopied(true); setTimeout(() => setCopied(false), 2500); }
+    catch (_) { window.prompt('Copie a chave PIX:', PIX_KEY); }
+  };
+  return <div style={{ display: 'grid', gap: 10, margin: '16px 0' }}>
+    <div style={{ color: 'var(--text-muted)', fontSize: '0.84rem' }}>Chave PIX</div>
+    <div style={{ fontSize: '1.5rem', fontWeight: 800, letterSpacing: '0.04em', color: '#fff' }}>{PIX_KEY}</div>
+    <button type="button" className="btn-primary" onClick={copy}>{copied ? 'Chave copiada!' : 'Copiar chave PIX'}</button>
+  </div>;
+}
+
+// No link público só existe PIX; cartão e dinheiro ficam para o atendimento presencial no dia.
 const PAYMENT_OPTIONS = [
-  { id: 'PIX', label: 'PIX', icon: '⚡', subtitle: 'Exibe QR Code instantâneo' },
+  { id: 'PIX', label: 'PIX', icon: '⚡', subtitle: 'Copie a chave PIX' },
   { id: 'Cartão de Crédito', label: 'Cartão de Crédito', icon: '💳', subtitle: 'Continue na maquininha' },
   { id: 'Cartão de Débito', label: 'Cartão de Débito', icon: '💳', subtitle: 'Continue na maquininha' },
   { id: 'Dinheiro', label: 'Dinheiro', icon: '💵', subtitle: 'Recebimento em espécie' }
@@ -266,12 +284,16 @@ export const RegistrationForm = ({
   if (paymentFlowState === 'public_completed' && currentRegistration) {
     return <div className="wizard-card" style={{ textAlign: 'center' }}>
       <CheckCircle2 size={48} style={{ color: '#34d399', marginBottom: 12 }} />
-      <h2>Inscrição recebida!</h2>
-      <p style={{ color: 'var(--text-muted)', marginTop: 10 }}>Sua inscrição em {activeEvent.name} foi registrada. O pagamento permanece pendente até a confirmação pela equipe.</p>
-      {currentRegistration.payment_method === 'PIX' && <div style={{ marginTop: 20 }}>
-        <p>Use o QR Code abaixo para pagar {priceFormatted}.</p>
-        <img src="/pix_qrcode.jpg" alt="QR Code PIX para pagamento" style={{ width: 210, maxWidth: '100%', margin: '16px auto' }} />
-      </div>}
+      <h2>Inscrição pendente</h2>
+      <p style={{ color: 'var(--text-muted)', marginTop: 10 }}>Sua inscrição em {activeEvent.name} foi registrada e fica <strong>pendente</strong> até a equipe confirmar o pagamento.</p>
+      {Number(shownPrice) > 0 && <>
+        <p style={{ marginTop: 16 }}>Faça o PIX de <strong style={{ color: '#34d399' }}>{priceFormatted}</strong>:</p>
+        <PixKeyBox />
+        <p style={{ color: 'var(--text-muted)' }}>Depois envie o comprovante no WhatsApp <strong>{RECEIPT_WHATSAPP_LABEL}</strong> para confirmar sua inscrição.</p>
+        <a className="btn-primary" style={{ marginTop: 12, display: 'block', textAlign: 'center', textDecoration: 'none', background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)' }}
+          href={`https://wa.me/${RECEIPT_WHATSAPP}?text=${encodeURIComponent(`Olá! Segue o comprovante do PIX de ${priceFormatted} da inscrição de ${currentRegistration.name} no evento ${activeEvent.name}.`)}`}
+          target="_blank" rel="noreferrer">Enviar comprovante no WhatsApp</a>
+      </>}
       <button type="button" className="btn-primary" style={{ marginTop: 18 }} onClick={handleStartNextPerson}>Nova inscrição neste evento</button>
     </div>;
   }
@@ -303,34 +325,13 @@ export const RegistrationForm = ({
                 <span>⚡ Pagamento Instantâneo</span>
               </div>
               <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.5rem', fontWeight: 800, color: '#fff', marginBottom: '4px' }}>
-                Escaneie o QR Code PIX
+                Pague com a chave PIX
               </h2>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', marginBottom: '16px' }}>
-                Abra o app do seu banco e aponte a câmera para pagar
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem' }}>
+                Copie a chave e cole no app do seu banco
               </p>
 
-              {/* Card Branco com o QR Code */}
-              <div style={{
-                background: '#ffffff',
-                padding: '16px',
-                borderRadius: 'var(--radius-lg)',
-                display: 'inline-block',
-                boxShadow: '0 10px 30px rgba(0, 0, 0, 0.4)',
-                border: '3px solid rgba(99, 102, 241, 0.4)',
-                marginBottom: '16px'
-              }}>
-                <img
-                  src="/pix_qrcode.jpg"
-                  alt="QR Code PIX para pagamento"
-                  style={{
-                    width: '210px',
-                    height: '210px',
-                    display: 'block',
-                    borderRadius: '8px',
-                    objectFit: 'contain'
-                  }}
-                />
-              </div>
+              <PixKeyBox />
 
               {/* Valor a Pagar */}
               <div style={{
@@ -877,7 +878,7 @@ export const RegistrationForm = ({
           </div>
 
           <div className="options-grid">
-            {PAYMENT_OPTIONS.map((opt) => (
+            {PAYMENT_OPTIONS.filter(opt => !publicMode || opt.id === 'PIX').map((opt) => (
               <button
                 key={opt.id}
                 type="button"

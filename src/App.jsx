@@ -7,7 +7,7 @@ import {
   getAdminSession, signInAdmin, signOutAdmin, registerAdminAccount, claimFirstAdmin,
   createEventWithSetupCode, createEventWithLots, createEventWithBanner,
   createEventWithLotsAndBanner, saveEventLotsWithSetupCode,
-  saveEventBannerWithSetupCode, fetchEventBanner,
+  saveEventBannerWithSetupCode, fetchEventBanner, fetchEventShareText, saveEventShareText,
   fetchEvents, fetchNetworks, fetchDisciplers, fetchLeaders, fetchRegistrations,
   createRegistration, createSharedRegistration, fetchSharedEvent,
   deleteRegistration, updateRegistrationStatus, addNetwork, deleteNetwork,
@@ -112,6 +112,7 @@ function QuickEventSetup({ onAdmin, onLinkReady, initialLink = '' }) {
   const [hasSavedLots, setHasSavedLots] = useState(false);
   const [bannerData, setBannerData] = useState('');
   const [bannerDirty, setBannerDirty] = useState(false);
+  const [shareText, setShareText] = useState('');
   const [bannerBusy, setBannerBusy] = useState(false);
   const imageInputRef = useRef(null);
   const [link, setLink] = useState('');
@@ -135,6 +136,7 @@ function QuickEventSetup({ onAdmin, onLinkReady, initialLink = '' }) {
     fetchEventBanner(token).then(data => {
       if (!cancelled) { setBannerData(data || ''); setBannerDirty(false); }
     }).catch(() => {});
+    fetchEventShareText(token).then(text => { if (!cancelled) setShareText(text); }).catch(() => {});
     return () => { cancelled = true; };
   }, [editingExisting, existingLink]);
   const changeLot = (index, field, value) => {
@@ -187,6 +189,7 @@ function QuickEventSetup({ onAdmin, onLinkReady, initialLink = '' }) {
               : await createEventWithSetupCode('', eventData);
           token = saved.share_token;
         }
+        await saveEventShareText(token, shareText);
         const completedLink = eventLink(token);
         onLinkReady?.();
         setLink(completedLink);
@@ -214,6 +217,11 @@ function QuickEventSetup({ onAdmin, onLinkReady, initialLink = '' }) {
         <img src={bannerData} alt="Prévia horizontal do evento" style={{ width: '100%', aspectRatio: '16 / 9', objectFit: 'cover', borderRadius: 10 }} />
         <button type="button" className="btn-secondary" onClick={() => { setBannerData(''); setBannerDirty(true); if (imageInputRef.current) imageInputRef.current.value = ''; }}>Remover foto</button>
       </div>}
+      <label style={{ fontWeight: 700 }}>Texto do link no WhatsApp
+        <textarea className="form-input" rows="3" maxLength={300} value={shareText} onChange={e => setShareText(e.target.value)}
+          placeholder="Ex.: Inscrições abertas para o Encontro de Jovens! Garanta sua vaga." style={{ marginTop: 8, fontWeight: 400 }} />
+        <span style={{ display: 'block', fontWeight: 400, fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 4 }}>Aparece com a foto quando o link é enviado no WhatsApp.</span>
+      </label>
       <div style={{ display: 'flex', gap: 8 }}>
         <button type="button" className={lotMode === 'single' ? 'btn-primary' : 'btn-secondary'} disabled={hasSavedLots} onClick={() => { setLotMode('single'); setLotsDirty(true); }}>Preço único</button>
         <button type="button" className={lotMode === 'lots' ? 'btn-primary' : 'btn-secondary'} onClick={() => { setLotMode('lots'); setLotsDirty(true); }}>Lotes de ingressos</button>

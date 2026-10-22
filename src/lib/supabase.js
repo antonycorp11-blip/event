@@ -85,6 +85,9 @@ export const fetchEventBanner = async (token) => {
   if (error) throw new Error(error.message);
   return data || null;
 };
+export const fetchEventShareText = async (token) => (result(await client().rpc('get_event_share', { p_token: token })) || {}).share_text || '';
+export const saveEventShareText = async (token, text) => result(await client().from('events')
+  .update({ share_text: text.trim() || null }).eq('share_token', token));
 export const signOutAdmin = async () => { result(await client().auth.signOut()); };
 export const getAdminSession = async () => {
   const { data, error } = await client().auth.getSession();
