@@ -779,7 +779,7 @@ export const AdminView = ({
                   try { await navigator.clipboard.writeText(link); alert('Link do evento copiado.'); }
                   catch (_) { window.prompt('Copie o link do evento:', link); }
                 }}>Copiar link exclusivo</button>
-                {event.share_token && <button type="button" className="btn-secondary" onClick={() => onManageLots?.(event)}>Gerenciar lotes</button>}
+                {event.share_token && <button type="button" className="btn-secondary" onClick={() => onManageLots?.(event)}>Lotes e foto</button>}
               </div>
             </div>)}
             <button type="button" className="btn-primary" onClick={() => {

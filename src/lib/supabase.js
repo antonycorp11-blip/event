@@ -43,17 +43,17 @@ export const saveSupabaseConfig = (url, anonKey) => {
 export const isSupabaseReady = () => Boolean(supabase);
 
 export const signInAdmin = async (email, password) => {
-  result(await client().auth.signInWithPassword({ email, password }));
-  const { data, error } = await client().rpc('is_admin');
-  if (error) throw new Error(error.message);
-  return data === true;
+  const { error } = await client().auth.signInWithPassword({ email, password });
+  if (error) throw new Error(/invalid login credentials/i.test(error.message) ? 'E-mail ou senha incorretos.' : error.message);
 };
+// O banco confirma contas novas automaticamente; entramos logo em seguida.
 export const registerAdminAccount = async (email, password) => {
   const { data, error } = await client().auth.signUp({ email, password });
-  if (error) throw new Error(error.message);
-  return Boolean(data.session);
+  if (error) throw new Error(/already registered/i.test(error.message) ? 'Este e-mail já tem acesso. Toque em Entrar.' : error.message);
+  if (!data.session) result(await client().auth.signInWithPassword({ email, password }));
 };
-export const claimFirstAdmin = async (code) => result(await client().rpc('claim_first_admin', { p_code: code.trim() }));
+// O primeiro e-mail que entra vira administrador; os demais são recusados.
+export const claimFirstAdmin = async () => result(await client().rpc('claim_first_admin', { p_code: '' }));
 export const createEventWithSetupCode = async (code, event) => result(await client().rpc('create_event_with_setup_code', {
   p_code: code.trim(), p_name: event.name.trim(), p_price: Number(event.price) || 0,
   p_date: event.date?.trim() || '', p_location: event.location?.trim() || ''
