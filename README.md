@@ -1,67 +1,36 @@
-# Event - Sistema de Inscrições e Gestão
+# Event — inscrições e gestão de eventos
 
-Aplicativo web mobile-first desenvolvido para gestão e inscrições de eventos, com sincronização em tempo real no **Supabase**, filtros combinados e extração instantânea para planilhas **Excel (.xlsx)** e **CSV**.
+Aplicativo React/Vite com dados no Supabase. A equipe usa a raiz `/`; cada evento possui um link público `/e/<token>` para inscrições. O link público mostra apenas o evento correspondente e o formulário. Inscrições públicas entram com pagamento **Pendente**.
 
-## 🚀 Funcionalidades
+## Colocar inscrições no ar
 
-- **📱 Formulário Mobile-First**: Otimizado para smartphones, com cálculo automático de idade, confirmação com animação de confetes e comprovante.
-  - **Nome Completo**
-  - **Data de Nascimento** (com cálculo automático de idade)
-  - **Sua Rede** (seleção das redes cadastradas)
-  - **Seu Discipulador** (seleção dos discipuladores cadastrados)
-  - **Líder** (campo livre que pode ficar em branco)
-  - **Forma de Pagamento** (PIX, Cartão de Crédito, Cartão de Débito, Dinheiro)
-  - **WhatsApp / Celular** (opcional)
-- **⚙️ Gerenciador de Listas**: Aba para cadastrar e excluir Redes e Discipuladores dinamicamente.
-- **📊 Painel de Inscritos & Métricas**: Visualização em tabela (desktop) e cartões (mobile) com status de pagamento.
-- **🔍 Filtros Cruzados**: Filtre simultaneamente por Evento, Rede, Discipulador, Líder (incluindo participantes sem líder), Forma de Pagamento e Status.
-- **📥 Extração com Filtros**:
-  - Exportação para **Excel (.xlsx)** com formatação automática de colunas.
-  - Exportação para **CSV** (UTF-8 com BOM para abrir sem erros de acentuação no Excel).
-  - O arquivo baixado reflete com exatidão os filtros ativos na tela.
-- **🗄️ Integração Supabase**: Conexão com banco de dados em nuvem e suporte a persistência local (fallback).
+1. No projeto Supabase `ojfnqcajbhvlqtprrfxg`, abra **SQL Editor** e execute todo o arquivo [supabase_schema.sql](./supabase_schema.sql). O resultado final mostra um `codigo_inicial`; guarde-o.
+2. Configure `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` no deploy. O `.env` local já está configurado. Nunca publique uma chave `service_role` no navegador.
+3. Abra a raiz do aplicativo publicado. Preencha **Criar evento e liberar inscrições** com nome, valor e o `codigo_inicial`. Copie o link gerado e compartilhe com os inscritos. Nenhuma conta de administrador é necessária nesta etapa.
+4. As listas de redes e discipuladores podem ser cadastradas depois. Enquanto vazias, o formulário permite digitar esses campos.
+5. Quando for cadastrar a equipe, clique em **Cadastrar ou entrar como equipe → Criar primeiro acesso** e use o mesmo `codigo_inicial` com um e-mail e senha. Se o Supabase exigir confirmação por e-mail, confirme e depois entre com senha e código.
 
----
+O SQL cria as tabelas, as funções do formulário público, um código inicial aleatório e as regras de acesso. Ele substitui as políticas antigas nas tabelas do aplicativo. O código inicial também permite criar eventos até o cadastro do primeiro administrador; depois é apagado.
 
-## 🛠️ Configuração do Banco de Dados (Supabase)
-
-1. Acesse o painel do seu projeto no [Supabase](https://supabase.com).
-2. Vá no menu **SQL Editor** e crie uma nova query.
-3. Copie todo o conteúdo do arquivo [`supabase_schema.sql`](./supabase_schema.sql) e clique em **Run**.
-4. Vá em **Project Settings > API**, copie a **Project URL** e a chave **anon public**.
-5. No app, clique no botão **"Conectar BD"** no canto superior direito e cole as informações (ou crie um arquivo `.env` baseado no `.env.example`).
-
----
-
-## 💻 Como Rodar Localmente
+## Desenvolvimento e deploy
 
 ```bash
-# 1. Instalar as dependências
 npm install
-
-# 2. Iniciar o servidor de desenvolvimento
 npm run dev
+npm run build
 ```
 
-O aplicativo estará disponível em:
-- **Local**: `http://localhost:3000/`
-- **Na mesma rede Wi-Fi (para celular)**: `http://<SEU_IP_LOCAL>:3000/`
+O arquivo `vercel.json` e `public/_redirects` configuram a rota `/e/*` para Vercel e Netlify. Em outra hospedagem, faça essa rota retornar `index.html` mantendo a URL do navegador.
 
----
+## Acesso dos links
 
-## 📱 Testando no Celular
+- `/`: cadastro e login da equipe, atendimento e administração.
+- `/e/<token>`: formulário do evento vinculado ao token. Não consulta inscritos, outros eventos ou ferramentas administrativas.
+- Usuários anônimos não têm acesso direto às tabelas. As funções SQL públicas só devolvem o evento do token e aceitam novas inscrições pendentes nesse evento.
+- Para encerrar um link, altere `active` do evento para `false` no Supabase. Para trocar o link, gere outro `share_token` no SQL Editor.
 
-Para testar diretamente no smartphone durante o desenvolvimento local:
-1. Conecte o celular na mesma rede Wi-Fi do computador.
-2. Acesse pelo navegador do celular o endereço de rede exibido no terminal (exemplo: `http://192.168.x.x:3000`).
-
----
-
-## 📦 Deploy Gratuito (Vercel ou Netlify)
-
-Para ter um link público definitivo acessível de qualquer lugar:
-1. Conecte o repositório GitHub na [Vercel](https://vercel.com) ou [Netlify](https://netlify.com).
-2. Adicione as variáveis de ambiente:
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
-3. Clique em **Deploy**!
+```sql
+update public.events set active = false where id = 'ID_DO_EVENTO';
+-- ou, para manter o evento ativo com outro link:
+update public.events set share_token = gen_random_uuid() where id = 'ID_DO_EVENTO';
+```

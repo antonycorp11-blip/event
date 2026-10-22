@@ -34,6 +34,8 @@ export const RegistrationForm = ({
   events = [],
   networks = [],
   disciplers = [],
+  leaders = [],
+  publicMode = false,
   onSubmit,
   onConfirmPaymentStatus
 }) => {
@@ -84,7 +86,8 @@ export const RegistrationForm = ({
     if (day < 1 || day > 31) return false;
     if (month < 1 || month > 12) return false;
     if (year < 1920 || year > new Date().getFullYear()) return false;
-    return true;
+    const date = new Date(year, month - 1, day);
+    return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day && date <= new Date();
   }, [birthDate]);
 
   useEffect(() => {
@@ -205,8 +208,8 @@ export const RegistrationForm = ({
 
     try {
       const saved = await onSubmit(regData);
-      setCurrentRegistration(saved || regData);
-      setPaymentFlowState('waiting_payment');
+      setCurrentRegistration(publicMode ? { ...regData, id: saved } : (saved || regData));
+      setPaymentFlowState(publicMode ? 'public_completed' : 'waiting_payment');
     } catch (err) {
       alert('Erro ao iniciar inscrição: ' + (err.message || 'tente novamente.'));
     } finally {
@@ -245,6 +248,19 @@ export const RegistrationForm = ({
     setIsSubmitting(false);
     setStep(1);
   };
+
+  if (paymentFlowState === 'public_completed' && currentRegistration) {
+    return <div className="wizard-card" style={{ textAlign: 'center' }}>
+      <CheckCircle2 size={48} style={{ color: '#34d399', marginBottom: 12 }} />
+      <h2>Inscrição recebida!</h2>
+      <p style={{ color: 'var(--text-muted)', marginTop: 10 }}>Sua inscrição em {activeEvent.name} foi registrada. O pagamento permanece pendente até a confirmação pela equipe.</p>
+      {currentRegistration.payment_method === 'PIX' && <div style={{ marginTop: 20 }}>
+        <p>Use o QR Code abaixo para pagar {priceFormatted}.</p>
+        <img src="/pix_qrcode.jpg" alt="QR Code PIX para pagamento" style={{ width: 210, maxWidth: '100%', margin: '16px auto' }} />
+      </div>}
+      <button type="button" className="btn-primary" style={{ marginTop: 18 }} onClick={handleStartNextPerson}>Nova inscrição neste evento</button>
+    </div>;
+  }
 
   // =========================================================================
   // TELA 1: AGUARDANDO PAGAMENTO (PIX QR CODE OU MAQUININHA DE CARTÃO)
@@ -648,7 +664,10 @@ export const RegistrationForm = ({
             <p className="step-subtitle">Toque na opção para avançar</p>
           </div>
 
-          <div className="options-grid">
+          {networks.length === 0 ? <form onSubmit={e => { e.preventDefault(); if (network.trim()) setStep(4); }}>
+            <input className="wizard-input-lg" type="text" placeholder="Digite sua rede" value={network} onChange={e => setNetwork(e.target.value)} required />
+            <button className="btn-next-action" type="submit" disabled={!network.trim()} style={{ marginTop: 16 }}>Continuar <ChevronRight size={20} /></button>
+          </form> : <div className="options-grid">
             {networks.map((net) => {
               const isSelected = network === net.name;
               return (
@@ -665,7 +684,7 @@ export const RegistrationForm = ({
                 </button>
               );
             })}
-          </div>
+          </div>}
 
           <div className="wizard-actions">
             <button type="button" className="btn-back-action" onClick={prevStep}>
@@ -688,7 +707,10 @@ export const RegistrationForm = ({
             <p className="step-subtitle">Toque no nome para avançar</p>
           </div>
 
-          <div className="options-grid">
+          {disciplers.length === 0 ? <form onSubmit={e => { e.preventDefault(); if (discipler.trim()) setStep(5); }}>
+            <input className="wizard-input-lg" type="text" placeholder="Digite o nome do discipulador" value={discipler} onChange={e => setDiscipler(e.target.value)} required />
+            <button className="btn-next-action" type="submit" disabled={!discipler.trim()} style={{ marginTop: 16 }}>Continuar <ChevronRight size={20} /></button>
+          </form> : <div className="options-grid">
             {disciplers.map((disc) => {
               const isSelected = discipler === disc.name;
               return (
@@ -705,7 +727,7 @@ export const RegistrationForm = ({
                 </button>
               );
             })}
-          </div>
+          </div>}
 
           <div className="wizard-actions">
             <button type="button" className="btn-back-action" onClick={prevStep}>
@@ -732,11 +754,13 @@ export const RegistrationForm = ({
             <input
               ref={leaderInputRef}
               type="text"
+              list="leader-options"
               className="wizard-input-lg"
               placeholder="Nome do líder (ou pule)..."
               value={leader}
               onChange={(e) => setLeader(e.target.value)}
             />
+            <datalist id="leader-options">{leaders.map(item => <option key={item.id} value={item.name} />)}</datalist>
           </div>
 
           <div className="wizard-actions">

@@ -4,15 +4,20 @@ import { Users, HeartHandshake, Plus, Trash2, Shield, Info } from 'lucide-react'
 export const ListsManager = ({
   networks = [],
   disciplers = [],
+  leaders = [],
   onAddNetwork,
   onDeleteNetwork,
   onAddDiscipler,
-  onDeleteDiscipler
+  onDeleteDiscipler,
+  onAddLeader,
+  onDeleteLeader
 }) => {
   const [newNetworkName, setNewNetworkName] = useState('');
   const [newDisciplerName, setNewDisciplerName] = useState('');
+  const [newLeaderName, setNewLeaderName] = useState('');
   const [isSubmittingNet, setIsSubmittingNet] = useState(false);
   const [isSubmittingDisc, setIsSubmittingDisc] = useState(false);
+  const [isSubmittingLeader, setIsSubmittingLeader] = useState(false);
 
   const handleAddNetwork = async (e) => {
     e.preventDefault();
@@ -22,7 +27,7 @@ export const ListsManager = ({
       await onAddNetwork(newNetworkName.trim());
       setNewNetworkName('');
     } catch (err) {
-      alert('Erro ao adicionar rede');
+      alert(`Erro ao adicionar rede: ${err.message}`);
     } finally {
       setIsSubmittingNet(false);
     }
@@ -36,9 +41,23 @@ export const ListsManager = ({
       await onAddDiscipler(newDisciplerName.trim());
       setNewDisciplerName('');
     } catch (err) {
-      alert('Erro ao adicionar discipulador');
+      alert(`Erro ao adicionar discipulador: ${err.message}`);
     } finally {
       setIsSubmittingDisc(false);
+    }
+  };
+
+  const handleAddLeader = async (e) => {
+    e.preventDefault();
+    if (!newLeaderName.trim()) return;
+    setIsSubmittingLeader(true);
+    try {
+      await onAddLeader(newLeaderName.trim());
+      setNewLeaderName('');
+    } catch (err) {
+      alert(`Erro ao adicionar líder: ${err.message}`);
+    } finally {
+      setIsSubmittingLeader(false);
     }
   };
 
@@ -58,7 +77,7 @@ export const ListsManager = ({
       }}>
         <Info size={22} style={{ flexShrink: 0, color: 'var(--primary)' }} />
         <div>
-          <strong>Configuração dos Campos:</strong> As <strong>Redes</strong> e os <strong>Discipuladores</strong> são gerenciados por você nas listas abaixo e aparecem no formulário. O campo <strong>Líder</strong> fica em branco no formulário para preenchimento livre ou opcional pelo inscrito.
+          <strong>Configuração dos Campos:</strong> Redes, discipuladores e líderes podem ser cadastrados abaixo. Líder continua opcional no formulário.
         </div>
       </div>
 
@@ -136,9 +155,9 @@ export const ListsManager = ({
                   </span>
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={async () => {
                       if (confirm(`Excluir a rede "${net.name}"?`)) {
-                        onDeleteNetwork(net.id);
+                        try { await onDeleteNetwork(net.id); } catch (err) { alert(`Erro ao excluir rede: ${err.message}`); }
                       }
                     }}
                     style={{
@@ -228,9 +247,9 @@ export const ListsManager = ({
                   </span>
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={async () => {
                       if (confirm(`Excluir o discipulador "${disc.name}"?`)) {
-                        onDeleteDiscipler(disc.id);
+                        try { await onDeleteDiscipler(disc.id); } catch (err) { alert(`Erro ao excluir discipulador: ${err.message}`); }
                       }
                     }}
                     style={{
@@ -248,6 +267,22 @@ export const ListsManager = ({
                 </div>
               ))
             )}
+          </div>
+        </div>
+        <div className="glass-card">
+          <h3 style={{ marginBottom: 12 }}>Lista de Líderes ({leaders.length})</h3>
+          <form onSubmit={handleAddLeader} style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+            <input className="form-input" type="text" placeholder="Nome do líder" value={newLeaderName} onChange={e => setNewLeaderName(e.target.value)} disabled={isSubmittingLeader} />
+            <button className="btn-primary" type="submit" disabled={isSubmittingLeader || !newLeaderName.trim()} style={{ width: 'auto', marginTop: 0 }}>Adicionar</button>
+          </form>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {leaders.map(leader => <div key={leader.id} style={{ display: 'flex', justifyContent: 'space-between', padding: 10, border: '1px solid var(--border-subtle)', borderRadius: 8 }}>
+              <span>{leader.name}</span>
+              <button type="button" title="Excluir líder" style={{ background: 'transparent', border: 0, color: '#f87171' }} onClick={async () => {
+                if (!confirm(`Excluir o líder "${leader.name}"?`)) return;
+                try { await onDeleteLeader(leader.id); } catch (err) { alert(`Erro ao excluir líder: ${err.message}`); }
+              }}><Trash2 size={16} /></button>
+            </div>)}
           </div>
         </div>
       </div>

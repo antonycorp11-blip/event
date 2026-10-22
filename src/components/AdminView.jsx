@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   ArrowLeft,
   Users,
@@ -30,7 +30,7 @@ import {
   copyOrShareWhatsApp
 } from '../lib/exportUtils';
 import { ListsManager } from './ListsManager';
-import { syncLocalToCloud } from '../lib/supabase';
+import { syncLocalToCloud, getSupabaseConfig } from '../lib/supabase';
 
 export const AdminView = ({
   onBack,
@@ -47,7 +47,12 @@ export const AdminView = ({
   onAddDiscipler,
   onDeleteDiscipler,
   onAddEvent,
-  isSupabaseConnected
+  leaders = [],
+  onAddLeader,
+  onDeleteLeader,
+  selectedEventId,
+  onSelectEvent,
+  onSignOut
 }) => {
   const [activeTab, setActiveTab] = useState('attendees'); // 'attendees' | 'event' | 'lists' | 'database'
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
@@ -55,6 +60,7 @@ export const AdminView = ({
 
   // Filtros
   const [filters, setFilters] = useState({
+    eventId: '',
     search: '',
     network: '',
     discipler: '',
@@ -69,6 +75,7 @@ export const AdminView = ({
 
   const handleClearFilters = () => {
     setFilters({
+      eventId: '',
       search: '',
       network: '',
       discipler: '',
@@ -92,6 +99,7 @@ export const AdminView = ({
   // Filtragem
   const filteredRegistrations = useMemo(() => {
     return registrations.filter((item) => {
+      if (filters.eventId && item.event_id !== filters.eventId) return false;
       if (filters.search) {
         const q = filters.search.toLowerCase().trim();
         const matchName = item.name?.toLowerCase().includes(q);
@@ -131,6 +139,7 @@ export const AdminView = ({
   }, [registrations]);
 
   const hasAdvancedFilters = Boolean(
+    filters.eventId ||
     filters.network ||
     filters.discipler ||
     filters.leader ||
@@ -170,28 +179,38 @@ export const AdminView = ({
   };
 
   // Edição do evento
-  const currentEvent = events[0] || { name: '', price: 0, date: '', location: '' };
+  const currentEvent = events.find(e => e.id === selectedEventId) || events[0] || { name: '', price: 0, date: '', location: '' };
+  const [isCreatingEvent, setIsCreatingEvent] = useState(!currentEvent.id);
   const [eventName, setEventName] = useState(currentEvent.name || '');
   const [eventPrice, setEventPrice] = useState(currentEvent.price || 0);
   const [eventDate, setEventDate] = useState(currentEvent.date || '');
   const [eventLocation, setEventLocation] = useState(currentEvent.location || '');
   const [isSavingEvent, setIsSavingEvent] = useState(false);
 
+  useEffect(() => {
+    if (isCreatingEvent) return;
+    setEventName(currentEvent.name || '');
+    setEventPrice(currentEvent.price ?? 0);
+    setEventDate(currentEvent.date || '');
+    setEventLocation(currentEvent.location || '');
+  }, [currentEvent.id, isCreatingEvent]);
+
   const handleSaveEvent = async (e) => {
     e.preventDefault();
     setIsSavingEvent(true);
     try {
-      await onAddEvent({
-        id: currentEvent.id,
+      const saved = await onAddEvent({
+        id: isCreatingEvent ? undefined : currentEvent.id,
         name: eventName.trim(),
         price: parseFloat(eventPrice) || 0,
         date: eventDate.trim(),
         location: eventLocation.trim(),
         active: true
       });
-      alert('Evento e valor salvos com sucesso!');
+      setIsCreatingEvent(false);
+      alert(`Evento "${saved.name}" salvo com sucesso!`);
     } catch (err) {
-      alert('Erro ao salvar evento.');
+      alert(`Erro ao salvar evento: ${err.message}`);
     } finally {
       setIsSavingEvent(false);
     }
@@ -233,6 +252,7 @@ export const AdminView = ({
         </button>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button type="button" className="btn-refresh-pill" onClick={onSignOut}>Sair</button>
           {/* Botão de Atualizar Manual para PWA */}
           <button
             type="button"
@@ -549,6 +569,10 @@ export const AdminView = ({
               gap: '8px'
             }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <select className="form-select" value={filters.eventId} onChange={e => handleFilterChange('eventId', e.target.value)}>
+                  <option value="">Todos os Eventos</option>
+                  {events.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                </select>
                 <select
                   className="form-select"
                   value={filters.network}
@@ -734,11 +758,30 @@ export const AdminView = ({
       {activeTab === 'event' && (
         <div className="glass-card">
           <h4 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#fff', marginBottom: '4px' }}>
-            Dados & Valor do Evento
+            Eventos
           </h4>
           <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
-            Altere o nome e valor por inscrição exibido no topo
+            Selecione o evento do atendimento ou crie um novo. Cada evento tem seu próprio link de inscrição.
           </p>
+          <div style={{ display: 'grid', gap: 10, marginBottom: 20 }}>
+            {events.map(event => <div key={event.id} style={{ border: '1px solid var(--border-glass)', padding: 12, borderRadius: 10 }}>
+              <div style={{ fontWeight: 700 }}>{event.name}</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                <button type="button" className="btn-secondary" onClick={() => { setIsCreatingEvent(false); onSelectEvent(event.id); }}>Usar no atendimento</button>
+                <button type="button" className="btn-secondary" onClick={async () => {
+                  if (!event.share_token) return alert('Execute a migração supabase_schema.sql para gerar o link.');
+                  const link = `${window.location.origin}/e/${event.share_token}`;
+                  try { await navigator.clipboard.writeText(link); alert('Link do evento copiado.'); }
+                  catch (_) { window.prompt('Copie o link do evento:', link); }
+                }}>Copiar link exclusivo</button>
+              </div>
+            </div>)}
+            <button type="button" className="btn-primary" onClick={() => {
+              setIsCreatingEvent(true); setEventName(''); setEventPrice(0); setEventDate(''); setEventLocation('');
+            }}><Plus size={18} /> Novo evento</button>
+          </div>
+
+          <h4 style={{ marginBottom: 12 }}>{isCreatingEvent ? 'Novo evento' : `Editar: ${currentEvent.name || 'evento'}`}</h4>
 
           <form onSubmit={handleSaveEvent} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <div className="form-group">
@@ -798,7 +841,7 @@ export const AdminView = ({
               disabled={isSavingEvent}
             >
               <Save size={18} />
-              <span>{isSavingEvent ? 'Salvando...' : 'Salvar Alterações'}</span>
+              <span>{isSavingEvent ? 'Salvando...' : isCreatingEvent ? 'Criar evento' : 'Salvar alterações'}</span>
             </button>
           </form>
         </div>
@@ -811,10 +854,13 @@ export const AdminView = ({
         <ListsManager
           networks={networks}
           disciplers={disciplers}
+          leaders={leaders}
           onAddNetwork={onAddNetwork}
           onDeleteNetwork={onDeleteNetwork}
           onAddDiscipler={onAddDiscipler}
           onDeleteDiscipler={onDeleteDiscipler}
+          onAddLeader={onAddLeader}
+          onDeleteLeader={onDeleteLeader}
         />
       )}
 
@@ -827,8 +873,8 @@ export const AdminView = ({
             width: '50px',
             height: '50px',
             borderRadius: '50%',
-            background: isSupabaseConnected ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)',
-            color: isSupabaseConnected ? '#34d399' : '#fbbf24',
+            background: 'rgba(16, 185, 129, 0.2)',
+            color: '#34d399',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -838,13 +884,11 @@ export const AdminView = ({
           </div>
 
           <h4 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#fff', marginBottom: '6px' }}>
-            {isSupabaseConnected ? 'Supabase Conectado' : 'Modo de Armazenamento Local'}
+            Supabase acessível
           </h4>
 
           <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', marginBottom: '18px' }}>
-            {isSupabaseConnected
-              ? 'Tudo o que você cadastra ou altera é salvo diretamente no banco de dados na nuvem.'
-              : 'As informações estão gravadas localmente neste navegador.'}
+            Eventos, listas e inscrições são salvos no projeto configurado abaixo.
           </p>
 
           <div style={{
@@ -855,9 +899,8 @@ export const AdminView = ({
             color: '#e2e8f0',
             textAlign: 'left'
           }}>
-            <div><strong>Projeto:</strong> ezzfhqyfxawjmhujffpy</div>
-            <div><strong>Endpoint:</strong> https://ezzfhqyfxawjmhujffpy.supabase.co</div>
-            <div><strong>Tabelas:</strong> events, networks, disciplers, registrations</div>
+            <div><strong>Endpoint:</strong> {getSupabaseConfig().url}</div>
+            <div><strong>Tabelas:</strong> events, networks, disciplers, leaders, registrations</div>
           </div>
         </div>
       )}

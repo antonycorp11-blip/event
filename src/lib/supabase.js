@@ -1,314 +1,130 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Credenciais padrão do Supabase do projeto oficial
-const DEFAULT_SUPABASE_URL = 'https://ezzfhqyfxawjmhujffpy.supabase.co';
-const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV6emZocXlmeGF3am1odWpmZnB5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkxMjExNTIsImV4cCI6MjEwNDY5NzE1Mn0.AEMcd-NCqEAge5Y6tRTqdyjLjU2jkPO3C4zaAxVdPM8';
+const envUrl = import.meta.env.VITE_SUPABASE_URL;
+const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// Obter configurações do .env, localStorage ou padrão oficial
-const getSavedConfig = () => {
+export const getSupabaseConfig = () => {
   try {
-    const local = localStorage.getItem('event_supabase_config');
-    if (local) {
-      const parsed = JSON.parse(local);
-      if (parsed.url && parsed.anonKey) return parsed;
-    }
-  } catch (e) {}
-
-  const envUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) || DEFAULT_SUPABASE_URL;
-  const envKey = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY) || DEFAULT_SUPABASE_ANON_KEY;
-
-  return {
-    url: (envUrl && !envUrl.includes('seu-projeto')) ? envUrl : DEFAULT_SUPABASE_URL,
-    anonKey: (envKey && !envKey.includes('sua-chave')) ? envKey : DEFAULT_SUPABASE_ANON_KEY
-  };
+    const saved = JSON.parse(localStorage.getItem('event_supabase_config') || 'null');
+    if (saved?.url && saved?.anonKey) return saved;
+  } catch (_) {}
+  return { url: envUrl || '', anonKey: envKey || '' };
 };
 
-let currentConfig = getSavedConfig();
-export const supabase = createClient(currentConfig.url, currentConfig.anonKey);
+let config = getSupabaseConfig();
+export let supabase = config.url && config.anonKey ? createClient(config.url, config.anonKey) : null;
 
-// Testar conexão
-export const testSupabaseConnection = async (url, anonKey) => {
+const client = () => {
+  if (!supabase) throw new Error('Configure a URL e a chave pública do Supabase.');
+  return supabase;
+};
+
+const result = ({ data, error }) => {
+  if (error) throw new Error(`${error.message}${error.code ? ` (${error.code})` : ''}`);
+  return data;
+};
+
+export const testSupabaseConnection = async (url = config.url, anonKey = config.anonKey) => {
   try {
     const testClient = createClient(url, anonKey);
-    const { error } = await testClient.from('events').select('count', { count: 'exact', head: true });
-    if (error && error.code !== 'PGRST116') {
-      return { success: false, message: error.message };
-    }
-    return { success: true, message: 'Conectado com sucesso ao Supabase!' };
-  } catch (err) {
-    return { success: false, message: err.message || 'Falha ao conectar' };
+    result(await testClient.rpc('get_shared_event', { p_token: '00000000-0000-0000-0000-000000000000' }));
+    return { success: true, message: 'Supabase acessível.' };
+  } catch (error) {
+    return { success: false, message: error.message };
   }
 };
 
 export const saveSupabaseConfig = (url, anonKey) => {
-  localStorage.setItem('event_supabase_config', JSON.stringify({ url, anonKey }));
-  currentConfig = { url, anonKey };
+  config = { url, anonKey };
+  localStorage.setItem('event_supabase_config', JSON.stringify(config));
+  supabase = createClient(url, anonKey);
 };
 
-export const getSupabaseConfig = () => currentConfig;
+export const isSupabaseReady = () => Boolean(supabase);
 
-export const isSupabaseReady = () => !!supabase;
-
-// ==========================================
-// FUNÇÕES DE EVENTOS (SINCRONIZAÇÃO NUVEM)
-// ==========================================
-export const fetchEvents = async () => {
-  try {
-    const { data, error } = await supabase
-      .from('events')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (error) throw error;
-    if (data && data.length > 0) return data;
-  } catch (e) {
-    console.error('Erro ao buscar eventos no Supabase:', e);
-  }
-  return [];
+export const signInAdmin = async (email, password) => {
+  result(await client().auth.signInWithPassword({ email, password }));
+  const { data, error } = await client().rpc('is_admin');
+  if (error) throw new Error(error.message);
+  return data === true;
 };
+export const registerAdminAccount = async (email, password) => {
+  const { data, error } = await client().auth.signUp({ email, password });
+  if (error) throw new Error(error.message);
+  return Boolean(data.session);
+};
+export const claimFirstAdmin = async (code) => result(await client().rpc('claim_first_admin', { p_code: code.trim() }));
+export const createEventWithSetupCode = async (code, event) => result(await client().rpc('create_event_with_setup_code', {
+  p_code: code.trim(), p_name: event.name.trim(), p_price: Number(event.price) || 0,
+  p_date: event.date?.trim() || '', p_location: event.location?.trim() || ''
+}));
+export const signOutAdmin = async () => { result(await client().auth.signOut()); };
+export const getAdminSession = async () => {
+  const { data, error } = await client().auth.getSession();
+  if (error || !data.session) return false;
+  const check = await client().rpc('is_admin');
+  return !check.error && check.data === true;
+};
+
+export const fetchEvents = async () => result(await client().from('events').select('*').order('created_at', { ascending: false })) || [];
+export const fetchNetworks = async () => result(await client().from('networks').select('*').order('name')) || [];
+export const fetchDisciplers = async () => result(await client().from('disciplers').select('*').order('name')) || [];
+export const fetchLeaders = async () => result(await client().from('leaders').select('*').order('name')) || [];
+export const fetchRegistrations = async () => result(await client().from('registrations').select('*').order('created_at', { ascending: false })) || [];
 
 export const addEvent = async (event) => {
   const payload = {
-    name: event.name.trim(),
-    price: parseFloat(event.price) || 0,
-    date: event.date ? event.date.trim() : null,
-    location: event.location ? event.location.trim() : null,
-    active: true
+    name: event.name.trim(), price: Number(event.price) || 0,
+    date: event.date?.trim() || null, location: event.location?.trim() || null,
+    active: event.active ?? true
   };
-
   if (event.id) {
-    payload.id = event.id;
+    return result(await client().from('events').update(payload).eq('id', event.id).select().single());
   }
-
-  try {
-    const { data, error } = await supabase
-      .from('events')
-      .upsert([payload], { onConflict: 'id' })
-      .select();
-
-    if (error) throw error;
-    if (data?.[0]) return data[0];
-  } catch (e) {
-    console.error('Erro ao salvar evento no Supabase:', e);
-    throw e;
-  }
-  return { ...payload, id: event.id || 'temp-id' };
+  return result(await client().from('events').insert(payload).select().single());
 };
 
-// ==========================================
-// FUNÇÕES DE REDES (SINCRONIZAÇÃO NUVEM)
-// ==========================================
-export const fetchNetworks = async () => {
-  try {
-    const { data, error } = await supabase
-      .from('networks')
-      .select('*')
-      .order('name', { ascending: true });
-    if (error) throw error;
-    if (data) return data;
-  } catch (e) {
-    console.error('Erro ao buscar redes no Supabase:', e);
-  }
-  return [];
-};
-
-export const addNetwork = async (name) => {
-  const trimmed = name.trim();
-  try {
-    const { data, error } = await supabase
-      .from('networks')
-      .insert([{ name: trimmed }])
-      .select();
-
-    if (error) throw error;
-    if (data?.[0]) return data[0];
-  } catch (e) {
-    console.error('Erro ao adicionar rede no Supabase:', e);
-    throw e;
-  }
-  return { id: Math.random().toString(), name: trimmed };
-};
-
-export const deleteNetwork = async (id) => {
-  try {
-    const { error } = await supabase.from('networks').delete().eq('id', id);
-    if (error) throw error;
-  } catch (e) {
-    console.error('Erro ao deletar rede no Supabase:', e);
-    throw e;
-  }
-};
-
-// ==========================================
-// FUNÇÕES DE DISCIPULADORES (SINCRONIZAÇÃO NUVEM)
-// ==========================================
-export const fetchDisciplers = async () => {
-  try {
-    const { data, error } = await supabase
-      .from('disciplers')
-      .select('*')
-      .order('name', { ascending: true });
-    if (error) throw error;
-    if (data) return data;
-  } catch (e) {
-    console.error('Erro ao buscar discipuladores no Supabase:', e);
-  }
-  return [];
-};
-
-export const addDiscipler = async (name) => {
-  const trimmed = name.trim();
-  try {
-    const { data, error } = await supabase
-      .from('disciplers')
-      .insert([{ name: trimmed }])
-      .select();
-
-    if (error) throw error;
-    if (data?.[0]) return data[0];
-  } catch (e) {
-    console.error('Erro ao adicionar discipulador no Supabase:', e);
-    throw e;
-  }
-  return { id: Math.random().toString(), name: trimmed };
-};
-
-export const deleteDiscipler = async (id) => {
-  try {
-    const { error } = await supabase.from('disciplers').delete().eq('id', id);
-    if (error) throw error;
-  } catch (e) {
-    console.error('Erro ao deletar discipulador no Supabase:', e);
-    throw e;
-  }
-};
-
-// ==========================================
-// FUNÇÕES DE INSCRIÇÕES (SINCRONIZAÇÃO NUVEM)
-// ==========================================
-export const fetchRegistrations = async () => {
-  try {
-    const { data, error } = await supabase
-      .from('registrations')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (error) throw error;
-    if (data) return data;
-  } catch (e) {
-    console.error('Erro ao buscar inscrições no Supabase:', e);
-  }
-  return [];
-};
+const addNamed = async (table, name) => result(await client().from(table).insert({ name: name.trim() }).select().single());
+const deleteNamed = async (table, id) => result(await client().from(table).delete().eq('id', id));
+export const addNetwork = (name) => addNamed('networks', name);
+export const deleteNetwork = (id) => deleteNamed('networks', id);
+export const addDiscipler = (name) => addNamed('disciplers', name);
+export const deleteDiscipler = (id) => deleteNamed('disciplers', id);
+export const addLeader = (name) => addNamed('leaders', name);
+export const deleteLeader = (id) => deleteNamed('leaders', id);
 
 export const createRegistration = async (registration) => {
   const payload = {
-    event_name: registration.event_name,
-    name: registration.name.trim(),
-    birth_date: registration.birth_date,
-    network: registration.network,
-    leader: registration.leader ? registration.leader.trim() : '',
-    discipler: registration.discipler,
-    payment_method: registration.payment_method,
-    payment_status: registration.payment_status || 'Pendente',
-    phone: registration.phone ? registration.phone.trim() : ''
+    event_id: registration.event_id, event_name: registration.event_name,
+    name: registration.name.trim(), birth_date: registration.birth_date,
+    network: registration.network, discipler: registration.discipler,
+    leader: registration.leader?.trim() || '', payment_method: registration.payment_method,
+    payment_status: 'Pendente', phone: registration.phone?.trim() || ''
   };
-
-  if (registration.event_id) {
-    payload.event_id = registration.event_id;
-  }
-
-  try {
-    const { data, error } = await supabase
-      .from('registrations')
-      .insert([payload])
-      .select();
-
-    if (error) throw error;
-    if (data?.[0]) return data[0];
-  } catch (e) {
-    console.error('Erro ao salvar inscrição no Supabase:', e);
-    throw e;
-  }
-  return { ...payload, id: Math.random().toString() };
+  return result(await client().from('registrations').insert(payload).select().single());
 };
+export const updateRegistrationStatus = async (id, status) => result(await client().from('registrations').update({ payment_status: status }).eq('id', id));
+export const deleteRegistration = async (id) => result(await client().from('registrations').delete().eq('id', id));
 
-export const updateRegistrationStatus = async (id, status) => {
-  try {
-    const { error } = await supabase
-      .from('registrations')
-      .update({ payment_status: status })
-      .eq('id', id);
-    if (error) throw error;
-  } catch (e) {
-    console.error('Erro ao atualizar status no Supabase:', e);
-    throw e;
-  }
-};
+// These RPCs expose only one event and its form options to a holder of its link.
+export const fetchSharedEvent = async (token) => result(await client().rpc('get_shared_event', { p_token: token }));
+export const createSharedRegistration = async (token, registration) => result(await client().rpc('register_for_event', {
+  p_token: token,
+  p_name: registration.name.trim(), p_birth_date: registration.birth_date,
+  p_network: registration.network, p_discipler: registration.discipler,
+  p_leader: registration.leader?.trim() || '', p_payment_method: registration.payment_method,
+  p_phone: registration.phone?.trim() || ''
+}));
 
-export const deleteRegistration = async (id) => {
-  try {
-    const { error } = await supabase
-      .from('registrations')
-      .delete()
-      .eq('id', id);
-    if (error) throw error;
-  } catch (e) {
-    console.error('Erro ao deletar inscrição no Supabase:', e);
-    throw e;
-  }
-};
-
-// Sincronizar qualquer dado que tenha ficado salvo localmente no celular direto para o Supabase
 export const syncLocalToCloud = async () => {
   let synced = 0;
-  try {
-    // 1. Redes locais
-    const localNets = localStorage.getItem('event_local_networks');
-    if (localNets) {
-      const parsedNets = JSON.parse(localNets);
-      for (const net of parsedNets) {
-        if (net.name) {
-          try {
-            await supabase.from('networks').upsert([{ name: net.name.trim() }], { onConflict: 'name' });
-            synced++;
-          } catch (e) {}
-        }
-      }
+  for (const [key, table] of [['event_local_networks', 'networks'], ['event_local_disciplers', 'disciplers']]) {
+    const items = JSON.parse(localStorage.getItem(key) || '[]');
+    for (const item of items) {
+      if (!item.name?.trim()) continue;
+      result(await client().from(table).upsert({ name: item.name.trim() }, { onConflict: 'name' }));
+      synced += 1;
     }
-
-    // 2. Discipuladores locais
-    const localDiscs = localStorage.getItem('event_local_disciplers');
-    if (localDiscs) {
-      const parsedDiscs = JSON.parse(localDiscs);
-      for (const disc of parsedDiscs) {
-        if (disc.name) {
-          try {
-            await supabase.from('disciplers').upsert([{ name: disc.name.trim() }], { onConflict: 'name' });
-            synced++;
-          } catch (e) {}
-        }
-      }
-    }
-
-    // 3. Eventos locais
-    const localEvents = localStorage.getItem('event_local_events');
-    if (localEvents) {
-      const parsedEvents = JSON.parse(localEvents);
-      if (parsedEvents[0]) {
-        const evt = parsedEvents[0];
-        try {
-          await supabase.from('events').upsert([{
-            name: evt.name,
-            price: parseFloat(evt.price) || 0,
-            date: evt.date || null,
-            location: evt.location || null,
-            active: true
-          }]);
-          synced++;
-        } catch (e) {}
-      }
-    }
-  } catch (err) {
-    console.warn('Erro ao ler localStorage para sincronização:', err);
   }
   return synced;
 };
