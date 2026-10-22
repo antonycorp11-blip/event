@@ -53,6 +53,7 @@ export const AdminView = ({
   selectedEventId,
   onSelectEvent,
   onManageLots,
+  onNewEvent,
   onSignOut
 }) => {
   const [activeTab, setActiveTab] = useState('attendees'); // 'attendees' | 'event' | 'lists' | 'database'
@@ -181,7 +182,7 @@ export const AdminView = ({
 
   // Edição do evento
   const currentEvent = events.find(e => e.id === selectedEventId) || events[0] || { name: '', price: 0, date: '', location: '' };
-  const [isCreatingEvent, setIsCreatingEvent] = useState(!currentEvent.id);
+  const [isCreatingEvent, setIsCreatingEvent] = useState(false);
   const [eventName, setEventName] = useState(currentEvent.name || '');
   const [eventPrice, setEventPrice] = useState(currentEvent.price || 0);
   const [eventDate, setEventDate] = useState(currentEvent.date || '');
@@ -782,12 +783,11 @@ export const AdminView = ({
                 {event.share_token && <button type="button" className="btn-secondary" onClick={() => onManageLots?.(event)}>Lotes e foto</button>}
               </div>
             </div>)}
-            <button type="button" className="btn-primary" onClick={() => {
-              setIsCreatingEvent(true); setEventName(''); setEventPrice(0); setEventDate(''); setEventLocation('');
-            }}><Plus size={18} /> Novo evento</button>
+            <button type="button" className="btn-primary" onClick={onNewEvent}><Plus size={18} /> Novo evento</button>
           </div>
 
-          <h4 style={{ marginBottom: 12 }}>{isCreatingEvent ? 'Novo evento' : `Editar: ${currentEvent.name || 'evento'}`}</h4>
+          {currentEvent.id && <>
+          <h4 style={{ marginBottom: 12 }}>{`Editar: ${currentEvent.name || 'evento'}`}</h4>
 
           <form onSubmit={handleSaveEvent} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <div className="form-group">
@@ -850,6 +850,7 @@ export const AdminView = ({
               <span>{isSavingEvent ? 'Salvando...' : isCreatingEvent ? 'Criar evento' : 'Salvar alterações'}</span>
             </button>
           </form>
+          </>}
         </div>
       )}
 

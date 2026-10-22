@@ -149,9 +149,9 @@ function QuickEventSetup({ onAdmin, onLinkReady, initialLink = '' }) {
     setLotMode('single'); setLotRows(starterLots()); setLotsDirty(false); setHasSavedLots(false);
   };
   return <main className="glass-card" style={{ maxWidth: 560, margin: '5vh auto' }}>
-    <h2>Eventos</h2>
+    <h2>{editingExisting ? 'Lotes e foto do evento' : 'Novo evento'}</h2>
     <p style={{ color: 'var(--text-muted)', margin: '12px 0' }}>
-      Crie o evento, defina o valor ou os lotes e copie o link de inscrições.
+      {editingExisting ? 'Ajuste os lotes ou a foto e salve.' : 'Preencha o nome, escolha preço único ou lotes e gere o link de inscrições.'}
     </p>
     {error && <p role="alert" style={{ color: '#fca5a5', marginBottom: 12 }}>{error}</p>}
     {link ? <div style={{ display: 'grid', gap: 12 }}>
@@ -162,7 +162,7 @@ function QuickEventSetup({ onAdmin, onLinkReady, initialLink = '' }) {
         catch (_) { window.prompt('Copie o link:', link); }
       }}>Copiar link</button>
       <a className="btn-secondary" href={link} style={{ textAlign: 'center', textDecoration: 'none' }}>Abrir inscrições</a>
-      <button className="btn-secondary" onClick={reset}>Preparar outro evento</button>
+      <button className="btn-secondary" onClick={onAdmin}>Voltar ao painel</button>
     </div> : <form onSubmit={async e => {
       e.preventDefault(); setBusy(true); setError('');
       try {
@@ -195,11 +195,7 @@ function QuickEventSetup({ onAdmin, onLinkReady, initialLink = '' }) {
       }
       finally { setBusy(false); }
     }} style={{ display: 'grid', gap: 12 }}>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button type="button" className={!editingExisting ? 'btn-primary' : 'btn-secondary'} onClick={() => { if (editingExisting) reset(); }}>Novo evento</button>
-        <button type="button" className={editingExisting ? 'btn-primary' : 'btn-secondary'} onClick={() => setEditingExisting(true)}>Editar evento existente</button>
-      </div>
-      {editingExisting ? <input className="form-input" type="url" value={existingLink} onChange={e => setExistingLink(e.target.value)} placeholder="Cole aqui o link de inscrição do evento" required /> : <>
+      {editingExisting ? null : <>
         <input className="form-input" value={name} onChange={e => setName(e.target.value)} placeholder="Nome do novo evento" required />
         <input className="form-input" value={date} onChange={e => setDate(e.target.value)} placeholder="Data (opcional)" />
         <input className="form-input" value={location} onChange={e => setLocation(e.target.value)} placeholder="Local (opcional)" />
@@ -400,6 +396,7 @@ export function App() {
         registrations={registrations} events={events} networks={networks} disciplers={disciplers} leaders={leaders}
         selectedEventId={activeEvent?.id} onSelectEvent={selectEvent}
         onManageLots={event => { setLocalLink(eventLink(event.share_token)); setStatus('quickstart'); }}
+        onNewEvent={() => { setLocalLink(''); setStatus('quickstart'); }}
         onDeleteRegistration={async id => { await deleteRegistration(id); setRegistrations(prev => prev.filter(r => r.id !== id)); }}
         onToggleStatus={async (id, state) => { await updateRegistrationStatus(id, state); setRegistrations(prev => prev.map(r => r.id === id ? { ...r, payment_status: state } : r)); }}
         onAddNetwork={async name => { const item = await addNetwork(name); setNetworks(prev => [...prev, item]); }}
