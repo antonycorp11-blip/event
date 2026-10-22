@@ -14,6 +14,56 @@ import {
 
 const sharedToken = window.location.pathname.match(/^\/e\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i)?.[1];
 const isSharedPath = window.location.pathname.startsWith('/e/');
+const eventPath = /^\/e\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i;
+
+function namesFromText(value) {
+  return [...new Set(value.split(/[\n,;]+/).map(name => name.trim()).filter(Boolean))];
+}
+
+function namesFromLink(url, key) {
+  try {
+    const raw = new URLSearchParams(url.hash.slice(1)).get('equipe');
+    const names = raw ? JSON.parse(raw)?.[key] : null;
+    return Array.isArray(names) ? names.filter(name => typeof name === 'string').slice(0, 50) : [];
+  } catch (_) { return []; }
+}
+
+function eventLink(token, networks, disciplers, leaders) {
+  const url = new URL(`/e/${token}`, window.location.origin);
+  const equipe = {
+    redes: namesFromText(networks),
+    discipuladores: namesFromText(disciplers),
+    lideres: namesFromText(leaders),
+  };
+  if (Object.values(equipe).some(names => names.length)) {
+    url.hash = new URLSearchParams({ equipe: JSON.stringify(equipe) }).toString();
+  }
+  return url.toString();
+}
+
+function validateTeamLists(networks, disciplers, leaders) {
+  for (const [label, names, maxLength] of [
+    ['redes', namesFromText(networks), 100],
+    ['discipuladores', namesFromText(disciplers), 100],
+    ['líderes', namesFromText(leaders), 150],
+  ]) {
+    if (names.length > 50) throw new Error(`Use até 50 nomes em ${label}.`);
+    if (names.some(name => name.length > maxLength)) throw new Error(`Um nome em ${label} está longo demais.`);
+  }
+}
+
+function listsForSharedEvent(bundle) {
+  const url = new URL(window.location.href);
+  const asOptions = names => names.map((name, index) => ({ id: `link-${index}-${name}`, name }));
+  const networks = namesFromLink(url, 'redes');
+  const disciplers = namesFromLink(url, 'discipuladores');
+  const leaders = namesFromLink(url, 'lideres');
+  return {
+    networks: networks.length ? asOptions(networks) : bundle.networks,
+    disciplers: disciplers.length ? asOptions(disciplers) : bundle.disciplers,
+    leaders: leaders.length ? asOptions(leaders) : bundle.leaders,
+  };
+}
 
 function Setup({ initialError = '' }) {
   const config = getSupabaseConfig();
@@ -81,37 +131,76 @@ function QuickEventSetup({ onAdmin, onConfigure }) {
   const [price, setPrice] = useState('0');
   const [date, setDate] = useState('');
   const [location, setLocation] = useState('');
+  const [networksText, setNetworksText] = useState('');
+  const [disciplersText, setDisciplersText] = useState('');
+  const [leadersText, setLeadersText] = useState('');
+  const [existingLink, setExistingLink] = useState('');
   const [link, setLink] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   return <main className="glass-card" style={{ maxWidth: 560, margin: '5vh auto' }}>
     <h2>Criar evento e liberar inscrições</h2>
     <p style={{ color: 'var(--text-muted)', margin: '12px 0' }}>
-      {setupCodeFromLink ? 'Preencha os dados do evento para gerar o link de inscrições.' : 'Informe os dados do evento. Você poderá cadastrar a equipe depois.'}
+      Cadastre o evento e as opções da equipe que aparecerão no formulário de inscrições.
     </p>
     {error && <p role="alert" style={{ color: '#fca5a5', marginBottom: 12 }}>{error}</p>}
     {link ? <div style={{ display: 'grid', gap: 12 }}>
       <p style={{ color: '#6ee7b7', fontWeight: 700 }}>Evento criado. Este é o link de inscrições:</p>
       <a href={link} style={{ color: '#a5b4fc', overflowWrap: 'anywhere' }}>{link}</a>
+      <p style={{ color: 'var(--text-muted)' }}>Compartilhe este link completo. Se alterar a equipe depois, compartilhe o novo link.</p>
       <button className="btn-primary" onClick={async () => {
         try { await navigator.clipboard.writeText(link); alert('Link copiado.'); }
         catch (_) { window.prompt('Copie o link:', link); }
       }}>Copiar link</button>
-      <button className="btn-secondary" onClick={() => { setLink(''); setName(''); setPrice('0'); setDate(''); setLocation(''); }}>Criar outro evento</button>
+      <button className="btn-secondary" onClick={() => { setLink(''); setName(''); setPrice('0'); setDate(''); setLocation(''); setNetworksText(''); setDisciplersText(''); setLeadersText(''); setExistingLink(''); }}>Preparar outro link</button>
     </div> : <form onSubmit={async e => {
       e.preventDefault(); setBusy(true); setError('');
       try {
-        const saved = await createEventWithSetupCode(code, { name, price, date, location });
-        setLink(`${window.location.origin}/e/${saved.share_token}`);
+        validateTeamLists(networksText, disciplersText, leadersText);
+        let token;
+        if (existingLink.trim()) {
+          const url = new URL(existingLink.trim());
+          if (url.origin !== window.location.origin) throw new Error('Cole o link deste site para o evento.');
+          token = url.pathname.match(eventPath)?.[1];
+          if (!token || !(await fetchSharedEvent(token))?.event) throw new Error('Evento não encontrado nesse link.');
+        } else {
+          const saved = await createEventWithSetupCode(code, { name, price, date, location });
+          token = saved.share_token;
+        }
+        setLink(eventLink(token, networksText, disciplersText, leadersText));
       } catch (err) { setError(err.message); }
       finally { setBusy(false); }
     }} style={{ display: 'grid', gap: 12 }}>
-      <input className="form-input" value={name} onChange={e => setName(e.target.value)} placeholder="Nome do evento" required />
-      <input className="form-input" type="number" min="0" step="0.01" value={price} onChange={e => setPrice(e.target.value)} placeholder="Valor da inscrição (R$)" required />
-      <input className="form-input" value={date} onChange={e => setDate(e.target.value)} placeholder="Data (opcional)" />
-      <input className="form-input" value={location} onChange={e => setLocation(e.target.value)} placeholder="Local (opcional)" />
-      {!setupCodeFromLink && <input className="form-input" value={code} onChange={e => setCode(e.target.value)} placeholder="Código inicial do SQL" required />}
-      <button className="btn-primary" disabled={busy}>{busy ? 'Criando...' : 'Criar evento e gerar link'}</button>
+      <label style={{ fontWeight: 700 }}>Evento</label>
+      <input className="form-input" type="url" value={existingLink} onChange={e => {
+        const value = e.target.value;
+        setExistingLink(value);
+        try {
+          const url = new URL(value);
+          setNetworksText(namesFromLink(url, 'redes').join('\n'));
+          setDisciplersText(namesFromLink(url, 'discipuladores').join('\n'));
+          setLeadersText(namesFromLink(url, 'lideres').join('\n'));
+        } catch (_) { /* O link ainda está sendo digitado. */ }
+      }} placeholder="Já tem um evento? Cole o link aqui" />
+      {!existingLink.trim() && <>
+        <input className="form-input" value={name} onChange={e => setName(e.target.value)} placeholder="Nome do novo evento" required />
+        <input className="form-input" type="number" min="0" step="0.01" value={price} onChange={e => setPrice(e.target.value)} placeholder="Valor da inscrição (R$)" required />
+        <input className="form-input" value={date} onChange={e => setDate(e.target.value)} placeholder="Data (opcional)" />
+        <input className="form-input" value={location} onChange={e => setLocation(e.target.value)} placeholder="Local (opcional)" />
+        {!setupCodeFromLink && <input className="form-input" value={code} onChange={e => setCode(e.target.value)} placeholder="Código inicial" required />}
+      </>}
+      <h3 style={{ marginTop: 8 }}>Equipe do evento</h3>
+      <p style={{ color: 'var(--text-muted)' }}>Escreva um nome por linha. As listas serão incluídas no link de inscrições.</p>
+      <label>Redes
+        <textarea className="form-input" rows="3" value={networksText} onChange={e => setNetworksText(e.target.value)} placeholder="Uma rede por linha" style={{ width: '100%', marginTop: 6 }} />
+      </label>
+      <label>Discipuladores
+        <textarea className="form-input" rows="3" value={disciplersText} onChange={e => setDisciplersText(e.target.value)} placeholder="Um discipulador por linha" style={{ width: '100%', marginTop: 6 }} />
+      </label>
+      <label>Líderes
+        <textarea className="form-input" rows="3" value={leadersText} onChange={e => setLeadersText(e.target.value)} placeholder="Um líder por linha" style={{ width: '100%', marginTop: 6 }} />
+      </label>
+      <button className="btn-primary" disabled={busy}>{busy ? 'Preparando...' : existingLink.trim() ? 'Atualizar link com a equipe' : 'Criar evento e gerar link'}</button>
     </form>}
     <button className="btn-secondary" style={{ marginTop: 12 }} onClick={onAdmin}>Cadastrar ou entrar como equipe</button>
     <button className="btn-secondary" style={{ marginTop: 12 }} onClick={onConfigure}>Alterar Supabase</button>
@@ -131,12 +220,13 @@ function SharedEventPage() {
   }, []);
   if (loading) return <main className="glass-card">Carregando evento...</main>;
   if (error) return <main className="glass-card" role="alert">{error}</main>;
+  const lists = listsForSharedEvent(bundle);
   return <div className="app-container">
     <header className="kiosk-header"><div className="event-info-pill"><div className="event-title-line">{bundle.event.name}</div><div className="event-meta-line">{bundle.event.date || ''} {bundle.event.location || ''}</div></div></header>
     <main style={{ flex: 1 }}>
       <RegistrationForm
         key={bundle.event.id}
-        events={[bundle.event]} networks={bundle.networks} disciplers={bundle.disciplers} leaders={bundle.leaders}
+        events={[bundle.event]} networks={lists.networks} disciplers={lists.disciplers} leaders={lists.leaders}
         publicMode onSubmit={reg => createSharedRegistration(sharedToken, reg)}
       />
     </main>
