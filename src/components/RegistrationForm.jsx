@@ -40,6 +40,7 @@ export const RegistrationForm = ({
   ticketLots = [],
   hasTicketLots = false,
   publicMode = false,
+  defaults = null,
   onSubmit,
   onRefreshAvailability,
   onConfirmPaymentStatus
@@ -47,13 +48,13 @@ export const RegistrationForm = ({
   const [step, setStep] = useState(1);
   const [name, setName] = useState('');
   const [birthDate, setBirthDate] = useState(''); // Armazenado como DD/MM/AAAA
-  const [network, setNetwork] = useState('');
-  const [discipler, setDiscipler] = useState('');
-  const [leader, setLeader] = useState(''); // Livre / pode ficar em branco
-  const [phone, setPhone] = useState('');
+  const [network, setNetwork] = useState(defaults?.network || '');
+  const [discipler, setDiscipler] = useState(defaults?.discipler || '');
+  const [leader, setLeader] = useState(defaults?.leader || ''); // Livre / pode ficar em branco
+  const [phone, setPhone] = useState(defaults?.phone || '');
   const [paymentMethod, setPaymentMethod] = useState('');
   // Link público: a inscrição pode ser feita por outra pessoa (quem paga) para quem vai participar.
-  const [forOther, setForOther] = useState(false);
+  const [forOther, setForOther] = useState(Boolean(defaults));
   const who = (mine, other) => (publicMode && forOther ? other : mine);
 
   const [isSubmitting, setIsSubmitting] = useState(false);

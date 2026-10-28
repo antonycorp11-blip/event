@@ -183,6 +183,10 @@ export const findMyRegistrations = async (token, name, birthDate) => result(awai
 export const startPayment = async (accessToken) => result(await client().rpc('start_registration_payment', {
   p_access_token: accessToken, p_origin: window.location.origin
 }));
+// Um único link de pagamento para várias inscrições (ex.: a família toda) ainda sem link.
+export const startGroupPayment = async (accessTokens) => result(await client().rpc('start_group_payment', {
+  p_access_tokens: accessTokens, p_origin: window.location.origin
+}));
 // Volta do checkout: o banco confere o pagamento na InfinitePay antes de confirmar.
 export const confirmPayment = async ({ orderNsu, transactionNsu, slug, receiptUrl }) => result(await client().rpc('confirm_registration_payment', {
   p_order_nsu: orderNsu, p_transaction_nsu: transactionNsu, p_slug: slug, p_receipt_url: receiptUrl || null

@@ -263,6 +263,8 @@ function SharedEventPage({ token = sharedToken }) {
   const [myTokens, setMyTokens] = useState(() => (token ? loadMyTokens(token) : []));
   const [myRegs, setMyRegs] = useState([]);
   const [view, setView] = useState('form');
+  // Dados da última inscrição deste aparelho: a próxima pessoa (ex.: da mesma família) já vem preenchida.
+  const [lastAnswers, setLastAnswers] = useState(null);
   const paidIds = useRef(null);
   const refreshEvent = async () => {
     try {
@@ -295,11 +297,12 @@ function SharedEventPage({ token = sharedToken }) {
     window.history.replaceState(null, '', window.location.pathname);
     try {
       const confirmed = await confirmPayment(payment);
-      if (!confirmed?.access_token) return myTokens;
+      const paidTokens = confirmed?.access_tokens || (confirmed?.access_token ? [confirmed.access_token] : []);
+      if (!paidTokens.length) return myTokens;
       if (confirmed.status === 'Confirmado') {
         try { confetti({ particleCount: 110, spread: 80, origin: { y: 0.6 } }); } catch (_) {}
       }
-      const tokens = saveMyTokens(token, [confirmed.access_token, ...myTokens]);
+      const tokens = saveMyTokens(token, [...paidTokens, ...myTokens]);
       setMyTokens(tokens);
       return tokens;
     } catch (_) {
@@ -351,8 +354,9 @@ function SharedEventPage({ token = sharedToken }) {
             events={[bundle.event]} networks={bundle.networks} disciplers={bundle.disciplers} leaders={bundle.leaders}
             ticketLots={bundle.ticket_lots || []} hasTicketLots={Boolean(bundle.has_ticket_lots)}
             onRefreshAvailability={refreshEvent}
-            publicMode onSubmit={async reg => {
+            publicMode defaults={lastAnswers} onSubmit={async reg => {
               const saved = await registerPublic(token, reg);
+              setLastAnswers({ network: reg.network, discipler: reg.discipler, leader: reg.leader, phone: reg.phone });
               remember([saved.access_token]);
               setView('mine');
               refreshEvent();

@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { CheckCircle2, Clock, Download, Search, Share2, Ticket, XCircle } from 'lucide-react';
-import { startPayment } from '../lib/supabase';
+import { startGroupPayment } from '../lib/supabase';
 import { PixKeyBox, QrImage, RECEIPT_WHATSAPP, RECEIPT_WHATSAPP_LABEL } from './PixKeyBox';
 
 const money = value => `R$ ${Number(value || 0).toFixed(2).replace('.', ',')}`;
@@ -99,61 +99,68 @@ function TicketCard({ registration }) {
   </div>;
 }
 
-function ManualPix({ registration }) {
+function ManualPix({ registrations }) {
+  const total = registrations.reduce((sum, r) => sum + Number(r.ticket_price || 0), 0);
+  const names = registrations.map(r => r.name).join(', ');
   return <div style={{ textAlign: 'center' }}>
-    <p>Faça o PIX de <strong style={{ color: '#34d399' }}>{money(registration.ticket_price)}</strong>:</p>
+    <p>Faça o PIX de <strong style={{ color: '#34d399' }}>{money(total)}</strong>:</p>
     <PixKeyBox />
-    <p style={{ color: 'var(--text-muted)' }}>Depois envie o comprovante no WhatsApp <strong>{RECEIPT_WHATSAPP_LABEL}</strong>. A equipe confirma e o seu ingresso aparece aqui.</p>
+    <p style={{ color: 'var(--text-muted)' }}>Depois envie o comprovante no WhatsApp <strong>{RECEIPT_WHATSAPP_LABEL}</strong>. A equipe confirma e os ingressos aparecem aqui.</p>
     <a className="btn-primary" style={{ marginTop: 12, display: 'block', textAlign: 'center', textDecoration: 'none', background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)' }}
-      href={`https://wa.me/${RECEIPT_WHATSAPP}?text=${encodeURIComponent(`Olá! Segue o comprovante do PIX de ${money(registration.ticket_price)} da inscrição de ${registration.name} no evento ${registration.event_name}.`)}`}
+      href={`https://wa.me/${RECEIPT_WHATSAPP}?text=${encodeURIComponent(`Olá! Segue o comprovante do PIX de ${money(total)} da inscrição de ${names} no evento ${registrations[0].event_name}.`)}`}
       target="_blank" rel="noreferrer">Enviar comprovante no WhatsApp</a>
   </div>;
 }
 
-function PendingPix({ registration, onChanged }) {
-  // undefined: carregando · null: pagamento automático ainda não configurado · objeto: link
-  const [payment, setPayment] = useState(undefined);
+// Um pagamento para um grupo de inscrições: as que já têm link (pagar agora) ou as
+// ainda sem link, que viram um único Pix quando a pessoa toca em pagar.
+function PaymentBox({ registrations, onChanged }) {
+  const [manual, setManual] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const load = useCallback(async () => {
-    try {
-      const data = await startPayment(registration.access_token);
-      setError('');
-      if (data.status !== 'Pendente') { onChanged(); return; }
-      setPayment(data.configured === false ? null : data);
-    } catch (err) {
-      setError(err.message);
-    }
-  }, [registration.access_token, onChanged]);
-  useEffect(() => { load(); }, [load]);
-  const now = useNow(Boolean(payment?.expires_at));
+  const url = registrations[0].payment_url;
+  const total = registrations.reduce((sum, r) => sum + Number(r.ticket_price || 0), 0);
+  const expires = Math.min(...registrations.map(r => (r.pix_expires_at ? new Date(r.pix_expires_at).getTime() : Infinity)));
+  const now = useNow(Number.isFinite(expires));
+  const left = expires - now;
 
-  if (payment === null) return <ManualPix registration={registration} />;
-  if (error) return <div style={{ textAlign: 'center', display: 'grid', gap: 10 }}>
-    <p role="alert" style={{ color: '#fca5a5' }}>Não foi possível abrir o pagamento agora. Tente novamente em instantes.</p>
-    <button type="button" className="btn-primary" onClick={() => { setError(''); setPayment(undefined); load(); }}>Tentar novamente</button>
-  </div>;
-  if (!payment) return <p style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Preparando o pagamento...</p>;
-
-  const left = payment.expires_at ? new Date(payment.expires_at).getTime() - now : Infinity;
+  if (manual) return <ManualPix registrations={registrations} />;
   if (left <= 0) return <p style={{ textAlign: 'center', color: '#fca5a5' }}>O prazo para pagar acabou. Se você já pagou, aguarde alguns instantes; senão, faça uma nova inscrição.</p>;
 
-  return <div style={{ textAlign: 'center', display: 'grid', gap: 12 }}>
-    <p>Valor: <strong style={{ color: '#34d399', fontSize: '1.15rem' }}>{money(registration.ticket_price)}</strong></p>
-    <a className="btn-primary" href={payment.url} style={{ display: 'flex', justifyContent: 'center', textDecoration: 'none', background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)' }}>
-      Pagar com Pix
-    </a>
-    <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem' }}>
-      Você vai para a página segura da InfinitePay, paga com Pix e volta para cá. A inscrição é confirmada na hora e o ingresso aparece nesta tela, sem precisar enviar comprovante.
-    </p>
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: '#fcd34d', fontWeight: 700 }}>
-      <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#f59e0b', animation: 'pulseSuccess 1.5s infinite' }} />
-      Aguardando pagamento{Number.isFinite(left) ? ` · expira em ${remainingText(left)}` : ''}
+  const pay = async () => {
+    if (url) { window.location.href = url; return; }
+    setBusy(true); setError('');
+    try {
+      const data = await startGroupPayment(registrations.map(r => r.access_token));
+      if (data.configured === false) { setManual(true); return; }
+      if (data.url) { window.location.href = data.url; return; }
+      onChanged();
+    } catch (_) {
+      setError('Não foi possível abrir o pagamento agora. Tente novamente em instantes.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return <div style={{ border: '1px solid rgba(16, 185, 129, 0.35)', background: 'rgba(16, 185, 129, 0.08)', borderRadius: 14, padding: 16, display: 'grid', gap: 12, textAlign: 'center' }}>
+    <div style={{ color: '#fcd34d', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><Clock size={18} /> Pagamento pendente</div>
+    <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+      {registrations.length > 1 ? `${registrations.length} inscrições: ` : ''}{registrations.map(r => r.name).join(', ')}
     </div>
-    <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>Pode fechar esta página e pagar depois: ao voltar neste link, o botão de pagamento estará aqui.</p>
+    <p>Total: <strong style={{ color: '#34d399', fontSize: '1.25rem' }}>{money(total)}</strong></p>
+    {error && <p role="alert" style={{ color: '#fca5a5' }}>{error}</p>}
+    <button type="button" className="btn-primary" disabled={busy} onClick={pay}
+      style={{ display: 'flex', justifyContent: 'center', background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)' }}>
+      {busy ? 'Abrindo pagamento...' : `Pagar ${money(total)} com Pix`}
+    </button>
+    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+      {registrations.length > 1 ? 'Um único Pix para todos. ' : ''}Você paga na página segura da InfinitePay e volta para cá com {registrations.length > 1 ? 'os ingressos' : 'o ingresso'}, sem precisar enviar comprovante.
+    </p>
+    {Number.isFinite(left) && <div style={{ color: '#fcd34d', fontWeight: 700, fontSize: '0.9rem' }}>Pague em até {remainingText(left)}; depois a vaga é liberada.</div>}
   </div>;
 }
 
-function RegistrationCard({ registration, onChanged }) {
+function RegistrationCard({ registration }) {
   const status = registration.payment_status;
   return <div style={{ border: '1px solid var(--border-glass)', borderRadius: 14, padding: 16, display: 'grid', gap: 12 }}>
     <div>
@@ -167,24 +174,32 @@ function RegistrationCard({ registration, onChanged }) {
         <XCircle size={20} style={{ flexShrink: 0 }} />
         <span>O prazo para pagar acabou e a vaga foi liberada. Se ainda quiser participar, faça uma nova inscrição.</span>
       </div>
-      : registration.payment_method === 'PIX' && Number(registration.ticket_price) > 0
-        ? <>
-          <div style={{ color: '#fcd34d', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6 }}><Clock size={18} /> Pagamento pendente</div>
-          <PendingPix registration={registration} onChanged={onChanged} />
-        </>
-        : <div style={{ color: '#fcd34d', fontWeight: 700 }}>Aguardando confirmação da equipe.</div>}
+      : <div style={{ color: '#fcd34d', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}><Clock size={16} /> Aguardando pagamento</div>}
   </div>;
 }
 
+const awaitingPix = r => r.payment_status === 'Pendente' && r.payment_method === 'PIX' && Number(r.ticket_price) > 0;
+
 export function MyRegistrations({ registrations, onNew, onChanged, finder }) {
-  const pending = registrations.some(r => r.payment_status === 'Pendente');
+  // Agrupa as pendentes por link de pagamento; as ainda sem link formam um único Pix.
+  const groups = [];
+  registrations.filter(awaitingPix).forEach(r => {
+    const key = r.payment_url || 'novo';
+    const group = groups.find(g => g.key === key);
+    group ? group.items.push(r) : groups.push({ key, items: [r] });
+  });
+  const unpaidWithoutLink = groups.some(g => g.key === 'novo');
   return <div className="wizard-card" style={{ display: 'grid', gap: 16 }}>
     <div className="step-header" style={{ marginBottom: 0 }}>
-      <div className="step-label"><Ticket size={15} /><span>{pending ? 'Pagamento pendente' : 'Seus ingressos'}</span></div>
+      <div className="step-label"><Ticket size={15} /><span>{groups.length ? 'Pagamento pendente' : 'Seus ingressos'}</span></div>
       <h2 className="step-title">{registrations.length > 1 ? 'Suas inscrições' : 'Sua inscrição'}</h2>
     </div>
-    {registrations.map(registration => <RegistrationCard key={registration.id} registration={registration} onChanged={onChanged} />)}
-    <button type="button" className="btn-secondary" onClick={onNew}>Inscrever outra pessoa</button>
+    {groups.map(g => <PaymentBox key={g.key} registrations={g.items} onChanged={onChanged} />)}
+    {registrations.map(registration => <RegistrationCard key={registration.id} registration={registration} />)}
+    <button type="button" className="btn-secondary" onClick={onNew}>+ Inscrever outra pessoa</button>
+    {unpaidWithoutLink && <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', marginTop: -8 }}>
+      Vai inscrever mais alguém? Adicione todos antes de pagar: fica tudo num Pix só.
+    </p>}
     {finder}
   </div>;
 }
