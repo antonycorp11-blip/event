@@ -1,23 +1,44 @@
--- PIX AUTOMÁTICO, INGRESSO COM QR CODE E CHECK-IN
+-- PIX AUTOMÁTICO (INFINITEPAY), INGRESSO COM QR CODE E CHECK-IN
 -- Execute uma vez no SQL Editor do mesmo projeto Supabase. Pode ser repetido.
 -- Mantém eventos, lotes e inscrições existentes.
 begin;
+
+-- O banco fala direto com a API de checkout da InfinitePay.
+create extension if not exists http with schema extensions;
 
 -- access_token: segredo que fica só no aparelho de quem se inscreveu pelo link.
 -- ticket_code: código do ingresso (vai no QR Code apresentado no check-in).
 alter table public.registrations add column if not exists access_token uuid not null default gen_random_uuid();
 alter table public.registrations add column if not exists ticket_code text not null default upper(substr(md5(gen_random_uuid()::text), 1, 10));
-alter table public.registrations add column if not exists pix_charge_id text;
-alter table public.registrations add column if not exists pix_br_code text;
+alter table public.registrations add column if not exists payment_url text;
 alter table public.registrations add column if not exists pix_expires_at timestamptz;
 alter table public.registrations add column if not exists paid_at timestamptz;
+alter table public.registrations add column if not exists payment_transaction_nsu text;
+alter table public.registrations add column if not exists payment_capture_method text;
+alter table public.registrations add column if not exists payment_receipt_url text;
 alter table public.registrations add column if not exists checked_in_at timestamptz;
 create unique index if not exists registrations_access_token on public.registrations(access_token);
 create unique index if not exists registrations_ticket_code on public.registrations(ticket_code);
+create unique index if not exists registrations_payment_transaction on public.registrations(payment_transaction_nsu);
 create index if not exists registrations_pix_pending on public.registrations(event_id, pix_expires_at) where payment_status = 'Pendente';
 
+-- InfiniteTag (sem o $) que recebe os pagamentos e prazo para pagar.
+-- Sem InfiniteTag, o link continua mostrando a chave Pix manual.
+create table if not exists public.payment_settings (
+  id boolean primary key default true check (id),
+  infinitepay_handle text,
+  pix_minutes integer not null default 60 check (pix_minutes between 10 and 1440)
+);
+insert into public.payment_settings(id) values (true) on conflict do nothing;
+alter table public.payment_settings enable row level security;
+revoke all on public.payment_settings from anon;
+grant select, update on public.payment_settings to authenticated;
+drop policy if exists admin_payment_settings on public.payment_settings;
+create policy admin_payment_settings on public.payment_settings for all to authenticated
+  using (public.is_admin()) with check (public.is_admin());
+
 -- Inscrição "Expirado" não ocupa vaga: a vaga volta ao lote ao expirar e é
--- retomada se a equipe confirmar a inscrição depois.
+-- retomada se a inscrição for confirmada depois.
 create or replace function public.sync_ticket_on_status_change() returns trigger
 language plpgsql security definer set search_path = ''
 as $$
@@ -54,8 +75,8 @@ begin
   return old;
 end $$;
 
--- Só expira cobranças geradas pelo PIX automático (pix_expires_at preenchido).
--- Os 10 minutos extras cobrem avisos de pagamento que chegam atrasados.
+-- Só expira inscrições que geraram link de pagamento (pix_expires_at preenchido).
+-- Os 10 minutos extras cobrem pagamentos feitos no último instante.
 create or replace function public.expire_unpaid_pix(p_event_id uuid) returns void
 language sql security definer set search_path = ''
 as $$
@@ -113,6 +134,112 @@ end $$;
 revoke all on function public.register_for_event_public(uuid,text,date,text,text,text,text,text,uuid) from public;
 grant execute on function public.register_for_event_public(uuid,text,date,text,text,text,text,text,uuid) to anon, authenticated;
 
+-- Chamada à API da InfinitePay. O limite de tempo fica abaixo do limite das
+-- consultas públicas do Supabase.
+create or replace function public.infinitepay_post(p_path text, p_body jsonb) returns jsonb
+language plpgsql security definer set search_path = ''
+as $$
+declare response record;
+begin
+  perform extensions.http_set_curlopt('CURLOPT_TIMEOUT_MS', '2500');
+  select * into response from extensions.http_post(
+    'https://api.checkout.infinitepay.io/' || p_path, p_body::text, 'application/json');
+  if response.status not between 200 and 299 then
+    raise exception 'InfinitePay respondeu %: %', response.status, left(response.content, 300);
+  end if;
+  return response.content::jsonb;
+end $$;
+revoke all on function public.infinitepay_post(text,jsonb) from public, anon, authenticated;
+
+-- Cria (uma vez) o link de pagamento da inscrição na InfinitePay.
+-- p_origin é o endereço do site, para a volta após o pagamento e o aviso automático.
+create or replace function public.start_registration_payment(p_access_token uuid, p_origin text) returns jsonb
+language plpgsql security definer set search_path = ''
+as $$
+declare r public.registrations; s public.payment_settings; e public.events;
+        link jsonb; checkout_url text; cents integer; expires timestamptz;
+begin
+  select * into r from public.registrations where access_token = p_access_token for update;
+  if not found then raise exception 'Inscrição não encontrada'; end if;
+  cents := round(coalesce(r.ticket_price, 0) * 100);
+  if coalesce(r.payment_status, 'Pendente') <> 'Pendente' or r.payment_method <> 'PIX' or cents <= 0 then
+    return jsonb_build_object('status', coalesce(r.payment_status, 'Pendente'));
+  end if;
+  select * into s from public.payment_settings where id;
+  if nullif(trim(coalesce(s.infinitepay_handle, '')), '') is null then
+    return jsonb_build_object('status', 'Pendente', 'configured', false);
+  end if;
+  if r.payment_url is not null then
+    return jsonb_build_object('status', 'Pendente', 'url', r.payment_url, 'expires_at', r.pix_expires_at);
+  end if;
+  if coalesce(p_origin, '') !~ '^https://[A-Za-z0-9.-]+(:[0-9]+)?$' then raise exception 'Endereço do site inválido'; end if;
+  select * into e from public.events where id = r.event_id;
+  link := public.infinitepay_post('links', jsonb_build_object(
+    'handle', trim(leading '$' from trim(s.infinitepay_handle)),
+    'order_nsu', r.id::text,
+    'items', jsonb_build_array(jsonb_build_object(
+      'quantity', 1, 'price', cents,
+      'description', left(r.event_name || coalesce(' - ' || r.ticket_lot_name, ''), 120))),
+    'redirect_url', p_origin || '/e/' || e.share_token::text,
+    'webhook_url', p_origin || '/api/pix-webhook'));
+  checkout_url := coalesce(link->>'url', link->>'link', link->>'checkout_url');
+  if checkout_url is null then raise exception 'A InfinitePay não devolveu o link de pagamento'; end if;
+  expires := now() + make_interval(mins => s.pix_minutes);
+  update public.registrations set payment_url = checkout_url, pix_expires_at = expires where id = r.id;
+  return jsonb_build_object('status', 'Pendente', 'url', checkout_url, 'expires_at', expires);
+end $$;
+revoke all on function public.start_registration_payment(uuid,text) from public;
+grant execute on function public.start_registration_payment(uuid,text) to anon, authenticated;
+
+-- Confirma o pagamento depois de consultar a própria InfinitePay. Chamada pela volta
+-- do checkout e pelo aviso automático; cada transação só confirma uma inscrição.
+-- Devolve o access_token apenas para quem apresentou um pagamento válido dessa inscrição.
+create or replace function public.confirm_registration_payment(
+  p_order_nsu text, p_transaction_nsu text, p_slug text, p_receipt_url text default null
+) returns jsonb
+language plpgsql security definer set search_path = ''
+as $$
+declare r public.registrations; s public.payment_settings; result jsonb;
+begin
+  if coalesce(p_order_nsu, '') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+     or length(coalesce(p_transaction_nsu, '')) not between 1 and 100
+     or length(coalesce(p_slug, '')) not between 1 and 100 then
+    raise exception 'Pagamento inválido';
+  end if;
+  select * into r from public.registrations where id = p_order_nsu::uuid for update;
+  if not found then raise exception 'Inscrição não encontrada'; end if;
+  if r.payment_transaction_nsu = p_transaction_nsu then
+    return jsonb_build_object('status', r.payment_status, 'access_token', r.access_token);
+  end if;
+  if r.payment_transaction_nsu is not null or r.payment_status in ('Confirmado', 'Pago') then
+    return jsonb_build_object('status', r.payment_status);
+  end if;
+  if exists (select 1 from public.registrations where payment_transaction_nsu = p_transaction_nsu) then
+    raise exception 'Este pagamento já confirmou outra inscrição';
+  end if;
+  select * into s from public.payment_settings where id;
+  result := public.infinitepay_post('payment_check', jsonb_build_object(
+    'handle', trim(leading '$' from trim(s.infinitepay_handle)),
+    'order_nsu', p_order_nsu, 'transaction_nsu', p_transaction_nsu, 'slug', p_slug));
+  if lower(coalesce(result->>'paid', 'false')) <> 'true'
+     or coalesce((result->>'amount')::numeric, 0) < round(coalesce(r.ticket_price, 0) * 100) then
+    return jsonb_build_object('status', coalesce(r.payment_status, 'Pendente'));
+  end if;
+  update public.registrations set payment_transaction_nsu = p_transaction_nsu,
+    payment_capture_method = left(result->>'capture_method', 40), paid_at = now(),
+    payment_receipt_url = case when p_receipt_url ~ '^https://' then left(p_receipt_url, 500) end
+  where id = r.id;
+  begin
+    update public.registrations set payment_status = 'Confirmado' where id = r.id;
+  exception when others then
+    -- Pagou depois de a vaga expirar e o lote esgotou: fica registrado para a equipe resolver.
+    return jsonb_build_object('status', 'Expirado', 'access_token', r.access_token);
+  end;
+  return jsonb_build_object('status', 'Confirmado', 'access_token', r.access_token);
+end $$;
+revoke all on function public.confirm_registration_payment(text,text,text,text) from public;
+grant execute on function public.confirm_registration_payment(text,text,text,text) to anon, authenticated;
+
 -- Quem tem o access_token vê só a própria inscrição. O código do ingresso
 -- só aparece depois do pagamento confirmado.
 create or replace function public.get_my_registrations(p_access_tokens uuid[]) returns jsonb
@@ -129,7 +256,7 @@ begin
     'ticket_lot_name', r.ticket_lot_name, 'ticket_price', coalesce(r.ticket_price, e.price, 0),
     'payment_method', r.payment_method, 'payment_status', coalesce(r.payment_status, 'Pendente'),
     'ticket_code', case when r.payment_status in ('Confirmado','Pago') then r.ticket_code end,
-    'pix_br_code', case when r.payment_status = 'Pendente' then r.pix_br_code end,
+    'payment_url', case when r.payment_status = 'Pendente' then r.payment_url end,
     'pix_expires_at', r.pix_expires_at, 'checked_in_at', r.checked_in_at, 'created_at', r.created_at
   ) order by r.created_at desc), '[]'::jsonb)
   from public.registrations r left join public.events e on e.id = r.event_id
@@ -153,4 +280,4 @@ grant execute on function public.find_my_registrations(uuid,text,date) to anon, 
 
 notify pgrst, 'reload schema';
 commit;
-select 'Pix automático e ingressos ativados' as resultado;
+select 'Pagamento InfinitePay e ingressos ativados' as resultado;

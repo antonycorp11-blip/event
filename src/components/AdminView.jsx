@@ -741,7 +741,9 @@ export const AdminView = ({
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '4px' }}>
-                      <span className="badge badge-payment">{item.payment_method}</span>
+                      {item.payment_receipt_url
+                        ? <a className="badge badge-payment" href={item.payment_receipt_url} target="_blank" rel="noreferrer" title="Recibo da InfinitePay">{item.payment_method} · recibo</a>
+                        : <span className="badge badge-payment">{item.payment_method}</span>}
 
                       {onCheckIn && isPaid && (
                         <button

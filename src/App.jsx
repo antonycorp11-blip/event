@@ -12,7 +12,7 @@ import {
   createRegistration, createSharedRegistration, fetchSharedEvent,
   deleteRegistration, updateRegistrationStatus, addNetwork, deleteNetwork,
   addDiscipler, deleteDiscipler, addLeader, deleteLeader, addEvent,
-  registerPublic, fetchMyRegistrations, findMyRegistrations, setCheckIn
+  registerPublic, fetchMyRegistrations, findMyRegistrations, setCheckIn, confirmPayment
 } from './lib/supabase';
 import { prepareEventBanner } from './lib/eventImage';
 import { loadMyTokens, saveMyTokens } from './lib/myRegistrations';
@@ -271,8 +271,8 @@ function SharedEventPage({ token = sharedToken }) {
       setError('');
     } catch (e) { setError(e.message); }
   };
-  const loadMine = useCallback(async () => {
-    const regs = await fetchMyRegistrations(myTokens);
+  const loadMine = useCallback(async (tokens = myTokens) => {
+    const regs = await fetchMyRegistrations(tokens);
     // Comemora quando um pagamento é confirmado com a página aberta.
     const paid = regs.filter(r => r.ticket_code).map(r => r.id);
     if (paidIds.current && paid.some(id => !paidIds.current.includes(id))) {
@@ -282,11 +282,34 @@ function SharedEventPage({ token = sharedToken }) {
     setMyRegs(regs);
     return regs;
   }, [myTokens]);
+  // A InfinitePay volta para o link com os dados do pagamento na URL; o banco
+  // confere o pagamento e, se aprovado, este aparelho passa a ver o ingresso.
+  const returnFromCheckout = async () => {
+    const params = new URLSearchParams(window.location.search);
+    const payment = {
+      orderNsu: params.get('order_nsu'), transactionNsu: params.get('transaction_nsu'),
+      slug: params.get('slug') || params.get('invoice_slug'), receiptUrl: params.get('receipt_url')
+    };
+    if (!payment.orderNsu || !payment.transactionNsu || !payment.slug) return myTokens;
+    window.history.replaceState(null, '', window.location.pathname);
+    try {
+      const confirmed = await confirmPayment(payment);
+      if (!confirmed?.access_token) return myTokens;
+      if (confirmed.status === 'Confirmado') {
+        try { confetti({ particleCount: 110, spread: 80, origin: { y: 0.6 } }); } catch (_) {}
+      }
+      const tokens = saveMyTokens(token, [confirmed.access_token, ...myTokens]);
+      setMyTokens(tokens);
+      return tokens;
+    } catch (_) {
+      return myTokens; // o aviso automático da InfinitePay ainda confirma
+    }
+  };
   useEffect(() => {
     if (!token) { setError('Link de evento inválido.'); setLoading(false); return; }
     setBannerData('');
     fetchEventBanner(token).then(photo => setBannerData(photo || '')).catch(() => {});
-    Promise.all([fetchSharedEvent(token), loadMine().catch(() => [])])
+    Promise.all([fetchSharedEvent(token), returnFromCheckout().then(tokens => loadMine(tokens)).catch(() => [])])
       .then(([data, regs]) => {
         if (!data?.event) throw new Error('Evento não encontrado ou encerrado.');
         setBundle(data);

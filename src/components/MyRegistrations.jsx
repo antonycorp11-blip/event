@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { CheckCircle2, Clock, Download, Search, Ticket, XCircle } from 'lucide-react';
-import { requestPixCharge } from '../lib/supabase';
-import { PixKeyBox, QrImage, RECEIPT_WHATSAPP, RECEIPT_WHATSAPP_LABEL, copyText } from './PixKeyBox';
+import { startPayment } from '../lib/supabase';
+import { PixKeyBox, QrImage, RECEIPT_WHATSAPP, RECEIPT_WHATSAPP_LABEL } from './PixKeyBox';
 
 const money = value => `R$ ${Number(value || 0).toFixed(2).replace('.', ',')}`;
 const ticketUrl = code => new URL(`/c/${code}`, window.location.origin).toString();
@@ -87,57 +87,45 @@ function ManualPix({ registration }) {
 }
 
 function PendingPix({ registration, onChanged }) {
-  // undefined: carregando · null: Pix automático ainda não configurado · objeto: cobrança
-  const [charge, setCharge] = useState(undefined);
+  // undefined: carregando · null: pagamento automático ainda não configurado · objeto: link
+  const [payment, setPayment] = useState(undefined);
   const [error, setError] = useState('');
-  const [checking, setChecking] = useState(false);
-  const [copied, setCopied] = useState(false);
   const load = useCallback(async () => {
     try {
-      const data = await requestPixCharge(registration.access_token);
+      const data = await startPayment(registration.access_token);
       setError('');
-      if (data && data.status !== 'Pendente') { onChanged(); return; }
-      setCharge(data);
+      if (data.status !== 'Pendente') { onChanged(); return; }
+      setPayment(data.configured === false ? null : data);
     } catch (err) {
       setError(err.message);
     }
   }, [registration.access_token, onChanged]);
   useEffect(() => { load(); }, [load]);
-  // O aviso da Woovi confirma sozinho; esta conferência a cada 30 s cobre um aviso atrasado.
-  useEffect(() => {
-    if (!charge) return;
-    const timer = setInterval(load, 30000);
-    return () => clearInterval(timer);
-  }, [charge, load]);
-  const now = useNow(Boolean(charge?.expiresAt));
+  const now = useNow(Boolean(payment?.expires_at));
 
-  if (charge === null) return <ManualPix registration={registration} />;
+  if (payment === null) return <ManualPix registration={registration} />;
   if (error) return <div style={{ textAlign: 'center', display: 'grid', gap: 10 }}>
-    <p role="alert" style={{ color: '#fca5a5' }}>{error}</p>
-    <button type="button" className="btn-primary" onClick={() => { setError(''); setCharge(undefined); load(); }}>Tentar novamente</button>
+    <p role="alert" style={{ color: '#fca5a5' }}>Não foi possível abrir o pagamento agora. Tente novamente em instantes.</p>
+    <button type="button" className="btn-primary" onClick={() => { setError(''); setPayment(undefined); load(); }}>Tentar novamente</button>
   </div>;
-  if (!charge) return <p style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Gerando o Pix...</p>;
+  if (!payment) return <p style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Preparando o pagamento...</p>;
 
-  const left = charge.expiresAt ? new Date(charge.expiresAt).getTime() - now : Infinity;
-  if (left <= 0) return <p style={{ textAlign: 'center', color: '#fca5a5' }}>O prazo deste Pix acabou. Se você já pagou, aguarde alguns instantes; senão, faça uma nova inscrição.</p>;
+  const left = payment.expires_at ? new Date(payment.expires_at).getTime() - now : Infinity;
+  if (left <= 0) return <p style={{ textAlign: 'center', color: '#fca5a5' }}>O prazo para pagar acabou. Se você já pagou, aguarde alguns instantes; senão, faça uma nova inscrição.</p>;
 
   return <div style={{ textAlign: 'center', display: 'grid', gap: 12 }}>
-    <p>Pague <strong style={{ color: '#34d399', fontSize: '1.15rem' }}>{money(registration.ticket_price)}</strong> com o Pix abaixo:</p>
-    <QrImage text={charge.brCode} size={220} alt="QR Code do Pix para pagamento" />
-    <button type="button" className="btn-primary" onClick={async () => {
-      if (await copyText(charge.brCode, 'Copie o código Pix:')) { setCopied(true); setTimeout(() => setCopied(false), 2500); }
-    }}>{copied ? 'Código copiado!' : 'Copiar código Pix (copia e cola)'}</button>
+    <p>Valor: <strong style={{ color: '#34d399', fontSize: '1.15rem' }}>{money(registration.ticket_price)}</strong></p>
+    <a className="btn-primary" href={payment.url} style={{ display: 'flex', justifyContent: 'center', textDecoration: 'none', background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)' }}>
+      Pagar com Pix
+    </a>
     <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem' }}>
-      No app do banco, escolha Pix › Pix copia e cola. Assim que o pagamento cair, sua inscrição é confirmada e o ingresso aparece aqui, sem precisar enviar comprovante.
+      Você vai para a página segura da InfinitePay, paga com Pix e volta para cá. A inscrição é confirmada na hora e o ingresso aparece nesta tela, sem precisar enviar comprovante.
     </p>
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: '#fcd34d', fontWeight: 700 }}>
       <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#f59e0b', animation: 'pulseSuccess 1.5s infinite' }} />
       Aguardando pagamento{Number.isFinite(left) ? ` · expira em ${remainingText(left)}` : ''}
     </div>
-    <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>Pode fechar esta página e pagar depois: ao voltar neste link, o Pix estará aqui.</p>
-    <button type="button" className="btn-secondary" disabled={checking} onClick={async () => {
-      setChecking(true); await load(); onChanged(); setChecking(false);
-    }}>{checking ? 'Conferindo...' : 'Já paguei'}</button>
+    <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem' }}>Pode fechar esta página e pagar depois: ao voltar neste link, o botão de pagamento estará aqui.</p>
   </div>;
 }
 

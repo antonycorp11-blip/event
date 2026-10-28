@@ -1,25 +1,24 @@
-import { hasServiceKey, table, validToken } from './_supabase.js';
-import { confirmIfPaid, getCharge, wooviReady } from './_woovi.js';
+import { rpc, validToken } from './_supabase.js';
 
-// Aviso da Woovi. O corpo só serve para saber qual cobrança olhar: o status e o
-// valor são sempre consultados de novo na API da Woovi antes de confirmar.
+// Aviso de pagamento aprovado da InfinitePay. O banco consulta a própria InfinitePay
+// (payment_check) antes de confirmar, então um aviso falso não confirma nada.
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(200).send('ok');
-  if (!wooviReady() || !hasServiceKey()) return res.status(503).json({ configured: false });
   const body = req.body || {};
-  const id = body.charge?.correlationID || body.pix?.charge?.correlationID || body.correlationID;
-  if (!validToken(id)) return res.status(200).json({ ignored: true }); // teste do painel ou outro evento
+  const orderNsu = String(body.order_nsu || '');
+  if (!validToken(orderNsu) || !body.transaction_nsu || !(body.invoice_slug || body.slug)) {
+    return res.status(400).json({ error: 'Pagamento inválido' });
+  }
   try {
-    const [registration] = await table(`registrations?id=eq.${id}&select=id,payment_status,ticket_price`);
-    if (!registration) return res.status(200).json({ ignored: true });
-    const charge = await getCharge(id);
-    if (await confirmIfPaid(registration, charge)) return res.status(200).json({ status: 'Confirmado' });
-    if (charge?.status === 'EXPIRED') {
-      await table(`registrations?id=eq.${id}&payment_status=eq.Pendente`, { method: 'PATCH', body: { payment_status: 'Expirado' } });
-    }
-    return res.status(200).json({ status: charge?.status });
+    const result = await rpc('confirm_registration_payment', {
+      p_order_nsu: orderNsu,
+      p_transaction_nsu: String(body.transaction_nsu),
+      p_slug: String(body.invoice_slug || body.slug),
+      p_receipt_url: body.receipt_url ? String(body.receipt_url) : null,
+    });
+    return res.status(200).json({ status: result?.status });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ error: 'Falha ao processar' }); // a Woovi tenta de novo
+    return res.status(400).json({ error: 'Não foi possível confirmar' });
   }
 }

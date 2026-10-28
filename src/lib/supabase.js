@@ -179,18 +179,14 @@ export const findMyRegistrations = async (token, name, birthDate) => result(awai
   p_token: token, p_name: name.trim(), p_birth_date: birthDate
 })) || [];
 
-// Cobrança Pix automática (função do servidor em /api/pix). null = ainda não configurada.
-export const requestPixCharge = async (accessToken) => {
-  const response = await fetch('/api/pix', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ access_token: accessToken })
-  });
-  const data = await response.json().catch(() => null);
-  // Sem a função no servidor (503, ou hospedagem sem /api) o link usa a chave Pix manual.
-  if (response.status === 503 || !data) return null;
-  if (!response.ok) throw new Error(data.error || 'Não foi possível gerar o Pix.');
-  return data;
-};
+// Link de pagamento da InfinitePay ({ status, url, expires_at }); configured: false = sem InfiniteTag.
+export const startPayment = async (accessToken) => result(await client().rpc('start_registration_payment', {
+  p_access_token: accessToken, p_origin: window.location.origin
+}));
+// Volta do checkout: o banco confere o pagamento na InfinitePay antes de confirmar.
+export const confirmPayment = async ({ orderNsu, transactionNsu, slug, receiptUrl }) => result(await client().rpc('confirm_registration_payment', {
+  p_order_nsu: orderNsu, p_transaction_nsu: transactionNsu, p_slug: slug, p_receipt_url: receiptUrl || null
+}));
 
 export const fetchTicketByCode = async (code) => result(await client().from('registrations')
   .select('id,name,event_name,payment_status,checked_in_at,ticket_lot_name,network,discipler,birth_date')

@@ -13,16 +13,3 @@ export async function rpc(name, args) {
 }
 
 export const validToken = token => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(token || '');
-
-// Chave secreta do Supabase (service_role ou sb_secret_...). Só existe nas funções
-// do servidor, para gravar o resultado do Pix; nunca vai para o navegador.
-const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-export const hasServiceKey = () => Boolean(serviceKey);
-
-export async function table(path, { method = 'GET', body } = {}) {
-  const headers = { apikey: serviceKey, 'Content-Type': 'application/json', Prefer: 'return=representation' };
-  if (!serviceKey.startsWith('sb_')) headers.Authorization = `Bearer ${serviceKey}`;
-  const response = await fetch(`${url}/rest/v1/${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined });
-  if (!response.ok) throw new Error(`Supabase ${response.status}: ${await response.text()}`);
-  return response.json();
-}
