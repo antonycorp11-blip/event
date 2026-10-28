@@ -182,8 +182,13 @@ export const RegistrationForm = ({
   };
 
   // 6. WhatsApp
+  // No link público o WhatsApp é obrigatório: a InfinitePay manda nele o código de confirmação do Pix.
+  const phoneRequired = publicMode && Number(currentPrice) > 0;
+  const phoneValid = [10, 11].includes(phone.replace(/\D/g, '').length);
+
   const handlePhoneSubmit = (e) => {
     if (e) e.preventDefault();
+    if (phoneRequired && !phoneValid) return;
     nextStep();
   };
 
@@ -793,7 +798,9 @@ export const RegistrationForm = ({
               <span>WhatsApp</span>
             </div>
             <h2 className="step-title">Qual o seu WhatsApp?</h2>
-            <p className="step-subtitle">Opcional para avisos e envio de comprovante</p>
+            <p className="step-subtitle">{phoneRequired
+              ? 'Obrigatório: o código de confirmação do Pix chega neste WhatsApp'
+              : 'Opcional para avisos e envio de comprovante'}</p>
           </div>
 
           <div className="wizard-input-wrap">
@@ -817,20 +824,21 @@ export const RegistrationForm = ({
             <button
               type="submit"
               className="btn-next-action"
+              disabled={phoneRequired && !phoneValid}
             >
-              <span>{phone.trim() ? 'Continuar' : 'Pular sem telefone'}</span>
+              <span>{phone.trim() || phoneRequired ? 'Continuar' : 'Pular sem telefone'}</span>
               <ChevronRight size={20} />
             </button>
           </div>
 
-          <button
+          {!phoneRequired && <button
             type="button"
             className="btn-skip-action"
             onClick={handleSkipPhone}
           >
             <FastForward size={16} style={{ marginRight: '6px' }} />
             <span>Pular sem telefone</span>
-          </button>
+          </button>}
         </form>
       )}
 

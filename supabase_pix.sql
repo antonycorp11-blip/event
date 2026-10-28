@@ -22,13 +22,15 @@ create unique index if not exists registrations_ticket_code on public.registrati
 create unique index if not exists registrations_payment_transaction on public.registrations(payment_transaction_nsu);
 create index if not exists registrations_pix_pending on public.registrations(event_id, pix_expires_at) where payment_status = 'Pendente';
 
--- InfiniteTag (sem o $) que recebe os pagamentos e prazo para pagar.
+-- InfiniteTag (sem o $) que recebe os pagamentos, prazo para pagar e o e-mail
+-- enviado ao checkout (a InfinitePay exige um; os comprovantes vão para ele).
 -- Sem InfiniteTag, o link continua mostrando a chave Pix manual.
 create table if not exists public.payment_settings (
   id boolean primary key default true check (id),
   infinitepay_handle text,
   pix_minutes integer not null default 60 check (pix_minutes between 10 and 1440)
 );
+alter table public.payment_settings add column if not exists customer_email text;
 insert into public.payment_settings(id) values (true) on conflict do nothing;
 alter table public.payment_settings enable row level security;
 revoke all on public.payment_settings from anon;
@@ -157,7 +159,7 @@ create or replace function public.start_registration_payment(p_access_token uuid
 language plpgsql security definer set search_path = ''
 as $$
 declare r public.registrations; s public.payment_settings; e public.events;
-        link jsonb; checkout_url text; cents integer; expires timestamptz;
+        link jsonb; checkout_url text; cents integer; expires timestamptz; phone_digits text;
 begin
   select * into r from public.registrations where access_token = p_access_token for update;
   if not found then raise exception 'Inscrição não encontrada'; end if;
@@ -174,7 +176,13 @@ begin
   end if;
   if coalesce(p_origin, '') !~ '^https://[A-Za-z0-9.-]+(:[0-9]+)?$' then raise exception 'Endereço do site inválido'; end if;
   select * into e from public.events where id = r.event_id;
+  -- Dados já preenchidos no checkout: a pessoa só confirma o código do WhatsApp e paga.
+  phone_digits := regexp_replace(coalesce(r.phone, ''), '\D', '', 'g');
   link := public.infinitepay_post('links', jsonb_build_object(
+    'customer', jsonb_strip_nulls(jsonb_build_object(
+      'name', r.name,
+      'email', nullif(trim(coalesce(s.customer_email, '')), ''),
+      'phone_number', case when length(phone_digits) between 10 and 11 then '+55' || phone_digits end)),
     'handle', trim(leading '$' from trim(s.infinitepay_handle)),
     'order_nsu', r.id::text,
     'items', jsonb_build_array(jsonb_build_object(
