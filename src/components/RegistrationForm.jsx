@@ -20,29 +20,13 @@ import {
 } from 'lucide-react';
 import { calculateAge } from '../lib/exportUtils';
 import confetti from 'canvas-confetti';
+import { PixKeyBox } from './PixKeyBox';
 
 const TOTAL_STEPS = 7;
 
-const PIX_KEY = '05902198127';
-const RECEIPT_WHATSAPP = '5565992786131';
-const RECEIPT_WHATSAPP_LABEL = '(65) 99278-6131';
-
-function PixKeyBox() {
-  const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    try { await navigator.clipboard.writeText(PIX_KEY); setCopied(true); setTimeout(() => setCopied(false), 2500); }
-    catch (_) { window.prompt('Copie a chave PIX:', PIX_KEY); }
-  };
-  return <div style={{ display: 'grid', gap: 10, margin: '16px 0' }}>
-    <div style={{ color: 'var(--text-muted)', fontSize: '0.84rem' }}>Chave PIX</div>
-    <div style={{ fontSize: '1.5rem', fontWeight: 800, letterSpacing: '0.04em', color: '#fff' }}>{PIX_KEY}</div>
-    <button type="button" className="btn-primary" onClick={copy}>{copied ? 'Chave copiada!' : 'Copiar chave PIX'}</button>
-  </div>;
-}
-
 // No link público só existe PIX; cartão e dinheiro ficam para o atendimento presencial no dia.
 const PAYMENT_OPTIONS = [
-  { id: 'PIX', label: 'PIX', icon: '⚡', subtitle: 'Copie a chave PIX' },
+  { id: 'PIX', label: 'PIX', icon: '⚡', subtitle: 'QR Code ou copia e cola' },
   { id: 'Cartão de Crédito', label: 'Cartão de Crédito', icon: '💳', subtitle: 'Continue na maquininha' },
   { id: 'Cartão de Débito', label: 'Cartão de Débito', icon: '💳', subtitle: 'Continue na maquininha' },
   { id: 'Dinheiro', label: 'Dinheiro', icon: '💵', subtitle: 'Recebimento em espécie' }
@@ -239,8 +223,10 @@ export const RegistrationForm = ({
 
     try {
       const saved = await onSubmit(regData);
-      setCurrentRegistration(publicMode ? { ...regData, id: saved } : (saved || regData));
-      setPaymentFlowState(publicMode ? 'public_completed' : 'waiting_payment');
+      // No link público a página passa a mostrar "Minhas inscrições" com o Pix.
+      if (publicMode) return;
+      setCurrentRegistration(saved || regData);
+      setPaymentFlowState('waiting_payment');
     } catch (err) {
       alert('Erro ao iniciar inscrição: ' + (err.message || 'tente novamente.'));
       if (/lote mudou|ingressos esgotados/i.test(err.message || '')) onRefreshAvailability?.();
@@ -280,23 +266,6 @@ export const RegistrationForm = ({
     setIsSubmitting(false);
     setStep(1);
   };
-
-  if (paymentFlowState === 'public_completed' && currentRegistration) {
-    return <div className="wizard-card" style={{ textAlign: 'center' }}>
-      <CheckCircle2 size={48} style={{ color: '#34d399', marginBottom: 12 }} />
-      <h2>Inscrição pendente</h2>
-      <p style={{ color: 'var(--text-muted)', marginTop: 10 }}>Sua inscrição em {activeEvent.name} foi registrada e fica <strong>pendente</strong> até a equipe confirmar o pagamento.</p>
-      {Number(shownPrice) > 0 && <>
-        <p style={{ marginTop: 16 }}>Faça o PIX de <strong style={{ color: '#34d399' }}>{priceFormatted}</strong>:</p>
-        <PixKeyBox />
-        <p style={{ color: 'var(--text-muted)' }}>Depois envie o comprovante no WhatsApp <strong>{RECEIPT_WHATSAPP_LABEL}</strong> para confirmar sua inscrição.</p>
-        <a className="btn-primary" style={{ marginTop: 12, display: 'block', textAlign: 'center', textDecoration: 'none', background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)' }}
-          href={`https://wa.me/${RECEIPT_WHATSAPP}?text=${encodeURIComponent(`Olá! Segue o comprovante do PIX de ${priceFormatted} da inscrição de ${currentRegistration.name} no evento ${activeEvent.name}.`)}`}
-          target="_blank" rel="noreferrer">Enviar comprovante no WhatsApp</a>
-      </>}
-      <button type="button" className="btn-primary" style={{ marginTop: 18 }} onClick={handleStartNextPerson}>Nova inscrição neste evento</button>
-    </div>;
-  }
 
   if (soldOut && paymentFlowState === 'idle') {
     return <div className="wizard-card" style={{ textAlign: 'center' }}>

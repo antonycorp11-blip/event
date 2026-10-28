@@ -42,6 +42,7 @@ export const AdminView = ({
   disciplers = [],
   onDeleteRegistration,
   onToggleStatus,
+  onCheckIn,
   onAddNetwork,
   onDeleteNetwork,
   onAddDiscipler,
@@ -132,8 +133,10 @@ export const AdminView = ({
 
   // Métricas
   const stats = useMemo(() => {
-    const total = registrations.length;
-    const confirmed = registrations.filter(
+    // Inscrições com Pix expirado não ocupam vaga e ficam fora das contagens.
+    const active = registrations.filter((r) => r.payment_status !== 'Expirado');
+    const total = active.length;
+    const confirmed = active.filter(
       (r) => r.payment_status === 'Confirmado' || r.payment_status === 'Pago'
     ).length;
     const pending = total - confirmed;
@@ -621,6 +624,7 @@ export const AdminView = ({
                   <option value="">Todos Status</option>
                   <option value="Confirmado">Confirmados</option>
                   <option value="Pendente">Pendentes</option>
+                  <option value="Expirado">Pix expirado</option>
                 </select>
               </div>
 
@@ -739,6 +743,22 @@ export const AdminView = ({
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '4px' }}>
                       <span className="badge badge-payment">{item.payment_method}</span>
 
+                      {onCheckIn && isPaid && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!item.checked_in_at || confirm(`Desfazer a entrada de ${item.name}?`)) onCheckIn(item.id, !item.checked_in_at);
+                          }}
+                          className="badge"
+                          style={{ cursor: 'pointer', border: 'none', padding: '5px 12px', background: item.checked_in_at ? 'rgba(99, 102, 241, 0.25)' : 'rgba(148, 163, 184, 0.15)', color: item.checked_in_at ? '#c7d2fe' : 'var(--text-muted)' }}
+                          title={item.checked_in_at ? 'Desfazer entrada' : 'Registrar entrada no evento'}
+                        >
+                          {item.checked_in_at
+                            ? `Entrou ${new Date(item.checked_in_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+                            : 'Registrar entrada'}
+                        </button>
+                      )}
+
                       <button
                         type="button"
                         onClick={() => onToggleStatus(item.id, isPaid ? 'Pendente' : 'Confirmado')}
@@ -747,7 +767,7 @@ export const AdminView = ({
                         title="Alternar status do pagamento"
                       >
                         {isPaid ? <Check size={12} /> : <Clock size={12} />}
-                        <span>{item.payment_status || 'Pendente'}</span>
+                        <span>{item.payment_status === 'Expirado' && item.paid_at ? 'Pago após expirar' : item.payment_status || 'Pendente'}</span>
                       </button>
                     </div>
                   </div>

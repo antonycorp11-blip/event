@@ -1,6 +1,8 @@
 {
   "rewrites": [
     { "source": "/e/:token", "destination": "/api/share?token=:token" },
-    { "source": "/e/:token/", "destination": "/api/share?token=:token" }
+    { "source": "/e/:token/", "destination": "/api/share?token=:token" },
+    { "source": "/c/:code", "destination": "/index.html" },
+    { "source": "/c/:code/", "destination": "/index.html" }
   ]
 }

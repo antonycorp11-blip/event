@@ -163,3 +163,40 @@ export const syncLocalToCloud = async () => {
   }
   return synced;
 };
+
+// Inscrição pelo link: devolve { id, access_token }; o token fica guardado no aparelho.
+export const registerPublic = async (token, registration) => result(await client().rpc('register_for_event_public', {
+  p_token: token,
+  p_name: registration.name.trim(), p_birth_date: registration.birth_date,
+  p_network: registration.network, p_discipler: registration.discipler,
+  p_leader: registration.leader?.trim() || '', p_payment_method: registration.payment_method,
+  p_phone: registration.phone?.trim() || '', p_lot_id: registration.ticket_lot_id || null
+}));
+export const fetchMyRegistrations = async (accessTokens) => accessTokens.length
+  ? result(await client().rpc('get_my_registrations', { p_access_tokens: accessTokens })) || []
+  : [];
+export const findMyRegistrations = async (token, name, birthDate) => result(await client().rpc('find_my_registrations', {
+  p_token: token, p_name: name.trim(), p_birth_date: birthDate
+})) || [];
+
+// Cobrança Pix automática (função do servidor em /api/pix). null = ainda não configurada.
+export const requestPixCharge = async (accessToken) => {
+  const response = await fetch('/api/pix', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ access_token: accessToken })
+  });
+  const data = await response.json().catch(() => null);
+  // Sem a função no servidor (503, ou hospedagem sem /api) o link usa a chave Pix manual.
+  if (response.status === 503 || !data) return null;
+  if (!response.ok) throw new Error(data.error || 'Não foi possível gerar o Pix.');
+  return data;
+};
+
+export const fetchTicketByCode = async (code) => result(await client().from('registrations')
+  .select('id,name,event_name,payment_status,checked_in_at,ticket_lot_name,network,discipler,birth_date')
+  .eq('ticket_code', code.toUpperCase()).maybeSingle());
+// Marca a entrada só se ainda não houver; devolve [] quando a pessoa já tinha entrado.
+export const setCheckIn = async (id, checkedIn) => {
+  const query = client().from('registrations').update({ checked_in_at: checkedIn ? new Date().toISOString() : null }).eq('id', id);
+  return result(await (checkedIn ? query.is('checked_in_at', null) : query).select('id,checked_in_at'));
+};

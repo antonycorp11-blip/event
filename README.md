@@ -10,6 +10,21 @@ Aplicativo React/Vite com dados no Supabase. A equipe usa a raiz `/`; cada event
 
 As alterações de banco já foram aplicadas no projeto Supabase `ojfnqcajbhvlqtprrfxg`. Configure `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` no deploy e nunca publique uma chave `service_role` no navegador.
 
+## Pix automático (Woovi), ingresso e check-in
+
+Quem se inscreve pelo link recebe um Pix com QR Code e "copia e cola" no valor do ingresso. Quando o pagamento cai, a Woovi avisa o app, a inscrição vira **Confirmado** e o ingresso com QR Code aparece na mesma tela. O aparelho lembra a inscrição: ao voltar ao link, a pessoa vê o Pix pendente ou o ingresso. Em outro celular, ela encontra a inscrição pelo nome e pela data de nascimento. Um Pix não pago expira (60 minutos por padrão) e a vaga volta para o lote. Evento gratuito já sai confirmado, com ingresso.
+
+1. Execute `supabase_pix.sql` no SQL Editor do Supabase.
+2. Na Vercel (Settings › Environment Variables), cadastre:
+   - `WOOVI_APP_ID`: AppID da API criado no painel da Woovi.
+   - `SUPABASE_SERVICE_ROLE_KEY`: chave secreta do Supabase (Project Settings › API). Fica só no servidor; nunca coloque no código nem em variável `VITE_`.
+   - Opcional: `PIX_EXPIRES_MINUTES` (padrão 60) e `WOOVI_API_URL=https://api.woovi-sandbox.com` para testar no sandbox.
+3. No painel da Woovi, cadastre o webhook `https://SEU-SITE/api/pix-webhook` para o evento de cobrança paga (`OPENPIX:CHARGE_COMPLETED`) e, se quiser, o de cobrança expirada (`OPENPIX:CHARGE_EXPIRED`).
+
+Sem `WOOVI_APP_ID`, o link continua mostrando a chave Pix manual e o envio de comprovante pelo WhatsApp.
+
+**Check-in:** o QR do ingresso abre `/c/<código>`. A equipe, logada no painel, aponta a câmera do celular e toca em **Confirmar entrada**. Uma segunda leitura do mesmo ingresso mostra "Já entrou". No painel também há o botão **Registrar entrada** em cada inscrito confirmado.
+
 ## Desenvolvimento e deploy
 
 ```bash

@@ -11,12 +11,18 @@ import {
   fetchEvents, fetchNetworks, fetchDisciplers, fetchLeaders, fetchRegistrations,
   createRegistration, createSharedRegistration, fetchSharedEvent,
   deleteRegistration, updateRegistrationStatus, addNetwork, deleteNetwork,
-  addDiscipler, deleteDiscipler, addLeader, deleteLeader, addEvent
+  addDiscipler, deleteDiscipler, addLeader, deleteLeader, addEvent,
+  registerPublic, fetchMyRegistrations, findMyRegistrations, setCheckIn
 } from './lib/supabase';
 import { prepareEventBanner } from './lib/eventImage';
+import { loadMyTokens, saveMyTokens } from './lib/myRegistrations';
+import { MyRegistrations, FindRegistration } from './components/MyRegistrations';
+import { CheckInPage } from './components/CheckInPage';
+import confetti from 'canvas-confetti';
 
 const sharedToken = window.location.pathname.match(/^\/e\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i)?.[1];
 const isSharedPath = window.location.pathname.startsWith('/e/');
+const checkInPath = window.location.pathname.match(/^\/c\/([0-9A-F]{10})\/?$/i)?.[1];
 const eventPath = /^\/e\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i;
 
 function eventLink(token) {
@@ -248,55 +254,90 @@ function QuickEventSetup({ onAdmin, onLinkReady, initialLink = '' }) {
   </main>;
 }
 
-function SharedEventPage({ token = sharedToken, organizer = false, link = window.location.href, onManage }) {
+function SharedEventPage({ token = sharedToken }) {
   const [bundle, setBundle] = useState(null);
   const [bannerData, setBannerData] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [myTokens, setMyTokens] = useState(() => (token ? loadMyTokens(token) : []));
+  const [myRegs, setMyRegs] = useState([]);
+  const [view, setView] = useState('form');
+  const paidIds = useRef(null);
   const refreshEvent = async () => {
-    setRefreshing(true);
     try {
       const data = await fetchSharedEvent(token);
       if (!data?.event) throw new Error('Evento não encontrado ou encerrado.');
       setBundle(data);
-      fetchEventBanner(token).then(photo => setBannerData(photo || '')).catch(() => {});
       setError('');
     } catch (e) { setError(e.message); }
-    finally { setRefreshing(false); }
   };
+  const loadMine = useCallback(async () => {
+    const regs = await fetchMyRegistrations(myTokens);
+    // Comemora quando um pagamento é confirmado com a página aberta.
+    const paid = regs.filter(r => r.ticket_code).map(r => r.id);
+    if (paidIds.current && paid.some(id => !paidIds.current.includes(id))) {
+      try { confetti({ particleCount: 110, spread: 80, origin: { y: 0.6 } }); } catch (_) {}
+    }
+    paidIds.current = paid;
+    setMyRegs(regs);
+    return regs;
+  }, [myTokens]);
   useEffect(() => {
     if (!token) { setError('Link de evento inválido.'); setLoading(false); return; }
     setBannerData('');
     fetchEventBanner(token).then(photo => setBannerData(photo || '')).catch(() => {});
-    fetchSharedEvent(token)
-      .then(data => { if (!data?.event) throw new Error('Evento não encontrado ou encerrado.'); setBundle(data); })
+    Promise.all([fetchSharedEvent(token), loadMine().catch(() => [])])
+      .then(([data, regs]) => {
+        if (!data?.event) throw new Error('Evento não encontrado ou encerrado.');
+        setBundle(data);
+        if (regs.length) setView('mine');
+      })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+  useEffect(() => {
+    if (view !== 'mine' || !myRegs.some(r => r.payment_status === 'Pendente')) return;
+    const timer = setInterval(() => loadMine().catch(() => {}), 5000);
+    return () => clearInterval(timer);
+  }, [view, myRegs, loadMine]);
+  useEffect(() => { if (!loading) loadMine().catch(() => {}); }, [myTokens]); // eslint-disable-line react-hooks/exhaustive-deps
+  const remember = tokens => setMyTokens(prev => saveMyTokens(token, [...tokens, ...prev]));
+  const finder = <FindRegistration onFind={async (name, birthDate) => {
+    const found = await findMyRegistrations(token, name, birthDate);
+    if (!found.length) return false;
+    remember(found);
+    setView('mine');
+    return true;
+  }} />;
+
   if (loading) return <main className="glass-card">Carregando evento...</main>;
   if (error) return <main className="glass-card" role="alert">{error}</main>;
-  const currentLot = [...(bundle.ticket_lots || [])]
-    .sort((a, b) => Number(a.position) - Number(b.position))
-    .find(lot => Number(lot.remaining) > 0);
-  const displayEvent = { ...bundle.event, price: currentLot?.price ?? bundle.event.price };
   return <div className="app-container">
-    {organizer
-      ? <Header event={displayEvent} soldOut={Boolean(bundle.has_ticket_lots && !currentLot)} attendeeCount={null} onOpenAdmin={onManage} onRefresh={refreshEvent} isRefreshing={refreshing} />
-      : <header className="kiosk-header"><div className="event-info-pill"><div className="event-title-line">{bundle.event.name}</div><div className="event-meta-line">{bundle.event.date || ''} {bundle.event.location || ''}</div></div></header>}
+    <header className="kiosk-header"><div className="event-info-pill"><div className="event-title-line">{bundle.event.name}</div><div className="event-meta-line">{bundle.event.date || ''} {bundle.event.location || ''}</div></div></header>
     {bannerData && <img className="event-banner" src={bannerData} alt={`Foto do evento ${bundle.event.name}`} />}
     <main style={{ flex: 1 }}>
-      <RegistrationForm
-        key={bundle.event.id}
-        events={[bundle.event]} networks={bundle.networks} disciplers={bundle.disciplers} leaders={bundle.leaders}
-        ticketLots={bundle.ticket_lots || []} hasTicketLots={Boolean(bundle.has_ticket_lots)}
-        onRefreshAvailability={refreshEvent}
-        publicMode onSubmit={async reg => {
-          const saved = await createSharedRegistration(token, reg);
-          fetchSharedEvent(token).then(setBundle).catch(() => {});
-          return saved;
-        }}
-      />
+      {view === 'mine' && myRegs.length
+        ? <MyRegistrations registrations={myRegs} finder={finder}
+            onChanged={() => loadMine().catch(() => {})}
+            onNew={() => { refreshEvent(); setView('form'); }} />
+        : <>
+          <RegistrationForm
+            key={bundle.event.id}
+            events={[bundle.event]} networks={bundle.networks} disciplers={bundle.disciplers} leaders={bundle.leaders}
+            ticketLots={bundle.ticket_lots || []} hasTicketLots={Boolean(bundle.has_ticket_lots)}
+            onRefreshAvailability={refreshEvent}
+            publicMode onSubmit={async reg => {
+              const saved = await registerPublic(token, reg);
+              remember([saved.access_token]);
+              setView('mine');
+              refreshEvent();
+              return saved;
+            }}
+          />
+          {myRegs.length > 0 && <button type="button" className="btn-secondary" style={{ display: 'block', margin: '12px auto' }} onClick={() => setView('mine')}>Ver minhas inscrições</button>}
+          <div style={{ textAlign: 'center' }}>{finder}</div>
+        </>}
     </main>
   </div>;
 }
@@ -315,6 +356,7 @@ export function App() {
   const [selectedEventId, setSelectedEventId] = useState(() => localStorage.getItem('event_selected_id'));
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [toast, setToast] = useState(null);
+  const [checkInCode, setCheckInCode] = useState(checkInPath);
   const showToast = (message, type = 'success') => { setToast({ message, type }); setTimeout(() => setToast(null), 4000); };
 
   const loadAllData = useCallback(async () => {
@@ -376,6 +418,9 @@ export function App() {
   if (status === 'setup') return <Setup initialError={error} />;
   if (status === 'quickstart') return <QuickEventSetup initialLink={localLink} onLinkReady={() => loadAllData().catch(() => {})} onAdmin={() => setStatus('ready')} />;
   if (status === 'login') return <Login onAuthenticate={onAuthenticate} error={error} />;
+  if (checkInCode && status === 'ready') return <CheckInPage code={checkInCode} onDone={() => {
+    window.history.replaceState(null, '', '/'); setCheckInCode(null); loadAllData().catch(() => {});
+  }} />;
   if (status === 'data-error') return <main className="glass-card" role="alert"><h2>Falha ao carregar dados</h2><p>{error}</p><button className="btn-primary" onClick={() => window.location.reload()}>Tentar novamente</button><button className="btn-secondary" onClick={() => setStatus('setup')}>Configurar Supabase</button></main>;
 
   return <div className="app-container">
@@ -406,7 +451,17 @@ export function App() {
         onManageLots={event => { setLocalLink(eventLink(event.share_token)); setStatus('quickstart'); }}
         onNewEvent={() => { setLocalLink(''); setStatus('quickstart'); }}
         onDeleteRegistration={async id => { await deleteRegistration(id); setRegistrations(prev => prev.filter(r => r.id !== id)); }}
-        onToggleStatus={async (id, state) => { await updateRegistrationStatus(id, state); setRegistrations(prev => prev.map(r => r.id === id ? { ...r, payment_status: state } : r)); }}
+        onToggleStatus={async (id, state) => {
+          try { await updateRegistrationStatus(id, state); setRegistrations(prev => prev.map(r => r.id === id ? { ...r, payment_status: state } : r)); }
+          catch (e) { showToast(e.message, 'error'); }
+        }}
+        onCheckIn={async (id, checkedIn) => {
+          try {
+            const [row] = await setCheckIn(id, checkedIn);
+            if (!row) { showToast('Esta pessoa já tinha entrada registrada.', 'error'); await loadAllData(); return; }
+            setRegistrations(prev => prev.map(r => r.id === id ? { ...r, checked_in_at: row.checked_in_at } : r));
+          } catch (e) { showToast(e.message, 'error'); }
+        }}
         onAddNetwork={async name => { const item = await addNetwork(name); setNetworks(prev => [...prev, item]); }}
         onDeleteNetwork={async id => { await deleteNetwork(id); setNetworks(prev => prev.filter(x => x.id !== id)); }}
         onAddDiscipler={async name => { const item = await addDiscipler(name); setDisciplers(prev => [...prev, item]); }}
