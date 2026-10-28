@@ -52,6 +52,9 @@ export const RegistrationForm = ({
   const [leader, setLeader] = useState(''); // Livre / pode ficar em branco
   const [phone, setPhone] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('');
+  // Link público: a inscrição pode ser feita por outra pessoa (quem paga) para quem vai participar.
+  const [forOther, setForOther] = useState(false);
+  const who = (mine, other) => (publicMode && forOther ? other : mine);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   
@@ -560,9 +563,18 @@ export const RegistrationForm = ({
               <User size={15} />
               <span>Nome Completo</span>
             </div>
-            <h2 className="step-title">Qual é o seu nome completo?</h2>
-            <p className="step-subtitle">Digite o nome e sobrenome do participante</p>
+            <h2 className="step-title">{who('Qual é o seu nome completo?', 'Nome completo de quem vai participar')}</h2>
+            <p className="step-subtitle">{who('Digite o nome e sobrenome do participante', 'O ingresso sai no nome desta pessoa')}</p>
           </div>
+
+          {publicMode && <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }} role="group" aria-label="Para quem é o ingresso">
+            {[[false, 'Para mim'], [true, 'Para outra pessoa']].map(([value, label]) => <button key={label} type="button"
+              className={`option-card-btn ${forOther === value ? 'selected' : ''}`}
+              style={{ minHeight: 48, justifyContent: 'center' }} aria-pressed={forOther === value}
+              onClick={() => { setForOther(value); nameInputRef.current?.focus(); }}>
+              <span className="option-card-label">{label}</span>
+            </button>)}
+          </div>}
 
           <div className="wizard-input-wrap">
             <input
@@ -598,7 +610,7 @@ export const RegistrationForm = ({
               <Calendar size={15} />
               <span>Data de Nascimento</span>
             </div>
-            <h2 className="step-title">Qual sua data de nascimento?</h2>
+            <h2 className="step-title">{who('Qual sua data de nascimento?', 'Data de nascimento do participante')}</h2>
             <p className="step-subtitle">Digite os números (dia, mês e ano)</p>
           </div>
 
@@ -660,7 +672,7 @@ export const RegistrationForm = ({
               <Users size={15} />
               <span>Rede</span>
             </div>
-            <h2 className="step-title">Qual é a sua Rede?</h2>
+            <h2 className="step-title">{who('Qual é a sua Rede?', 'Qual é a Rede do participante?')}</h2>
             <p className="step-subtitle">Toque na opção para avançar</p>
           </div>
 
@@ -703,7 +715,7 @@ export const RegistrationForm = ({
               <HeartHandshake size={15} />
               <span>Discipulado</span>
             </div>
-            <h2 className="step-title">Quem é seu Discipulador?</h2>
+            <h2 className="step-title">{who('Quem é seu Discipulador?', 'Quem é o Discipulador do participante?')}</h2>
             <p className="step-subtitle">Toque no nome para avançar</p>
           </div>
 
@@ -746,7 +758,7 @@ export const RegistrationForm = ({
               <Shield size={15} />
               <span>Liderança</span>
             </div>
-            <h2 className="step-title">Quem é o seu Líder?</h2>
+            <h2 className="step-title">{who('Quem é o seu Líder?', 'Quem é o Líder do participante?')}</h2>
             <p className="step-subtitle">Pode deixar em branco caso não tenha ou não lembre</p>
           </div>
 
@@ -797,9 +809,9 @@ export const RegistrationForm = ({
               <Phone size={15} />
               <span>WhatsApp</span>
             </div>
-            <h2 className="step-title">Qual o seu WhatsApp?</h2>
+            <h2 className="step-title">{who('Qual o seu WhatsApp?', 'Qual é o SEU WhatsApp?')}</h2>
             <p className="step-subtitle">{phoneRequired
-              ? 'Obrigatório: o código de confirmação do Pix chega neste WhatsApp'
+              ? who('Obrigatório: o código de confirmação do Pix chega neste WhatsApp', 'De quem está fazendo a inscrição e pagando: o código de confirmação do Pix chega aqui')
               : 'Opcional para avisos e envio de comprovante'}</p>
           </div>
 

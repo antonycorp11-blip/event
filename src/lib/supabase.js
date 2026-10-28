@@ -196,3 +196,11 @@ export const setCheckIn = async (id, checkedIn) => {
   const query = client().from('registrations').update({ checked_in_at: checkedIn ? new Date().toISOString() : null }).eq('id', id);
   return result(await (checkedIn ? query.is('checked_in_at', null) : query).select('id,checked_in_at'));
 };
+
+// Arquivar = encerrar o link de inscrições; o evento e as inscrições ficam como histórico.
+export const setEventActive = async (id, active) => result(await client().from('events').update({ active }).eq('id', id));
+// Apaga o evento e todas as inscrições dele (os lotes saem junto pelo cascade).
+export const deleteEventWithRegistrations = async (id) => {
+  result(await client().from('registrations').delete().eq('event_id', id));
+  result(await client().from('events').delete().eq('id', id));
+};

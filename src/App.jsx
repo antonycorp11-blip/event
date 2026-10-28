@@ -12,7 +12,8 @@ import {
   createRegistration, createSharedRegistration, fetchSharedEvent,
   deleteRegistration, updateRegistrationStatus, addNetwork, deleteNetwork,
   addDiscipler, deleteDiscipler, addLeader, deleteLeader, addEvent,
-  registerPublic, fetchMyRegistrations, findMyRegistrations, setCheckIn, confirmPayment
+  registerPublic, fetchMyRegistrations, findMyRegistrations, setCheckIn, confirmPayment,
+  setEventActive, deleteEventWithRegistrations
 } from './lib/supabase';
 import { prepareEventBanner } from './lib/eventImage';
 import { loadMyTokens, saveMyTokens } from './lib/myRegistrations';
@@ -423,7 +424,7 @@ export function App() {
     await loadAllData(); setError(''); setStatus('ready');
   };
   const selectEvent = id => { setSelectedEventId(id); localStorage.setItem('event_selected_id', id); };
-  const activeEvent = events.find(e => e.id === selectedEventId) || events[0];
+  const activeEvent = events.find(e => e.id === selectedEventId) || events.find(e => e.active !== false) || events[0];
   useEffect(() => {
     if (status !== 'ready' || !activeEvent?.share_token) { setAdminLotBundle(null); return; }
     let cancelled = false;
@@ -474,6 +475,18 @@ export function App() {
         onManageLots={event => { setLocalLink(eventLink(event.share_token)); setStatus('quickstart'); }}
         onNewEvent={() => { setLocalLink(''); setStatus('quickstart'); }}
         onDeleteRegistration={async id => { await deleteRegistration(id); setRegistrations(prev => prev.filter(r => r.id !== id)); }}
+        onSetEventActive={async (id, active) => {
+          try { await setEventActive(id, active); setEvents(prev => prev.map(e => e.id === id ? { ...e, active } : e)); showToast(active ? 'Inscrições reabertas.' : 'Evento arquivado: o link não aceita mais inscrições.'); }
+          catch (e) { showToast(e.message, 'error'); }
+        }}
+        onDeleteEvent={async id => {
+          try {
+            await deleteEventWithRegistrations(id);
+            setEvents(prev => prev.filter(e => e.id !== id));
+            setRegistrations(prev => prev.filter(r => r.event_id !== id));
+            showToast('Evento apagado.');
+          } catch (e) { showToast(e.message, 'error'); }
+        }}
         onToggleStatus={async (id, state) => {
           try { await updateRegistrationStatus(id, state); setRegistrations(prev => prev.map(r => r.id === id ? { ...r, payment_status: state } : r)); }
           catch (e) { showToast(e.message, 'error'); }

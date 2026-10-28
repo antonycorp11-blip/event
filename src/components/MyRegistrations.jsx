@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import QRCode from 'qrcode';
-import { CheckCircle2, Clock, Download, Search, Ticket, XCircle } from 'lucide-react';
+import { CheckCircle2, Clock, Download, Search, Share2, Ticket, XCircle } from 'lucide-react';
 import { startPayment } from '../lib/supabase';
 import { PixKeyBox, QrImage, RECEIPT_WHATSAPP, RECEIPT_WHATSAPP_LABEL } from './PixKeyBox';
 
@@ -30,8 +30,8 @@ function fitText(ctx, text, maxWidth, size, weight = 'bold') {
   do { ctx.font = `${weight} ${fontSize}px sans-serif`; fontSize -= 2; } while (ctx.measureText(text).width > maxWidth && fontSize > 14);
 }
 
-// Gera uma imagem do ingresso para a pessoa guardar na galeria.
-async function downloadTicket(registration) {
+// Gera a imagem do ingresso para guardar na galeria ou enviar a quem vai participar.
+async function ticketCanvas(registration) {
   const canvas = document.createElement('canvas');
   canvas.width = 640; canvas.height = 920;
   const ctx = canvas.getContext('2d');
@@ -52,10 +52,31 @@ async function downloadTicket(registration) {
   ctx.fillText(registration.ticket_code, 320, 760);
   ctx.font = 'normal 20px sans-serif'; ctx.fillStyle = '#6b7280';
   ctx.fillText('Apresente este QR Code na entrada do evento', 320, 820);
+  return canvas;
+}
+
+async function downloadTicket(registration) {
+  const canvas = await ticketCanvas(registration);
   const link = document.createElement('a');
   link.download = `ingresso-${registration.ticket_code}.png`;
   link.href = canvas.toDataURL('image/png');
   link.click();
+}
+
+// Abre o compartilhamento do celular (WhatsApp etc.) com a imagem do ingresso.
+// Sem suporte a arquivos, baixa a imagem para a pessoa enviar manualmente.
+async function shareTicket(registration) {
+  const canvas = await ticketCanvas(registration);
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+  const file = new File([blob], `ingresso-${registration.ticket_code}.png`, { type: 'image/png' });
+  const text = `Ingresso de ${registration.name} para ${registration.event_name}. Apresente o QR Code na entrada.`;
+  if (navigator.canShare?.({ files: [file] })) {
+    try { await navigator.share({ files: [file], text }); }
+    catch (err) { if (err?.name !== 'AbortError') throw err; }
+    return;
+  }
+  await downloadTicket(registration);
+  alert('A imagem do ingresso foi salva. Envie pelo WhatsApp para quem vai participar.');
 }
 
 function TicketCard({ registration }) {
@@ -69,8 +90,11 @@ function TicketCard({ registration }) {
     {registration.checked_in_at && <p style={{ color: '#a5b4fc', fontWeight: 700 }}>
       Entrada registrada às {new Date(registration.checked_in_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
     </p>}
-    <button type="button" className="btn-primary" onClick={() => downloadTicket(registration).catch(() => alert('Não foi possível salvar. Tire um print da tela.'))}>
-      <Download size={18} /> Salvar ingresso
+    <button type="button" className="btn-primary" onClick={() => shareTicket(registration).catch(() => alert('Não foi possível enviar. Tire um print da tela.'))}>
+      <Share2 size={18} /> Enviar ingresso (WhatsApp)
+    </button>
+    <button type="button" className="btn-secondary" onClick={() => downloadTicket(registration).catch(() => alert('Não foi possível salvar. Tire um print da tela.'))}>
+      <Download size={18} /> Salvar na galeria
     </button>
   </div>;
 }
@@ -160,7 +184,7 @@ export function MyRegistrations({ registrations, onNew, onChanged, finder }) {
       <h2 className="step-title">{registrations.length > 1 ? 'Suas inscrições' : 'Sua inscrição'}</h2>
     </div>
     {registrations.map(registration => <RegistrationCard key={registration.id} registration={registration} onChanged={onChanged} />)}
-    <button type="button" className="btn-secondary" onClick={onNew}>Fazer outra inscrição</button>
+    <button type="button" className="btn-secondary" onClick={onNew}>Inscrever outra pessoa</button>
     {finder}
   </div>;
 }

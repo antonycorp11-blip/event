@@ -54,6 +54,8 @@ export const AdminView = ({
   selectedEventId,
   onSelectEvent,
   onManageLots,
+  onSetEventActive,
+  onDeleteEvent,
   onNewEvent,
   onSignOut
 }) => {
@@ -63,7 +65,7 @@ export const AdminView = ({
 
   // Filtros
   const [filters, setFilters] = useState({
-    eventId: '',
+    eventId: selectedEventId || '',
     search: '',
     network: '',
     discipler: '',
@@ -76,9 +78,14 @@ export const AdminView = ({
     setFilters((prev) => ({ ...prev, [key]: value }));
   };
 
+  // A lista abre no evento em atendimento; "Todos os eventos" continua disponível.
+  useEffect(() => {
+    setFilters((prev) => ({ ...prev, eventId: selectedEventId || '' }));
+  }, [selectedEventId]);
+
   const handleClearFilters = () => {
     setFilters({
-      eventId: '',
+      eventId: filters.eventId,
       search: '',
       network: '',
       discipler: '',
@@ -134,17 +141,16 @@ export const AdminView = ({
   // Métricas
   const stats = useMemo(() => {
     // Inscrições com Pix expirado não ocupam vaga e ficam fora das contagens.
-    const active = registrations.filter((r) => r.payment_status !== 'Expirado');
+    const active = registrations.filter((r) => r.payment_status !== 'Expirado' && (!filters.eventId || r.event_id === filters.eventId));
     const total = active.length;
     const confirmed = active.filter(
       (r) => r.payment_status === 'Confirmado' || r.payment_status === 'Pago'
     ).length;
     const pending = total - confirmed;
     return { total, confirmed, pending };
-  }, [registrations]);
+  }, [registrations, filters.eventId]);
 
   const hasAdvancedFilters = Boolean(
-    filters.eventId ||
     filters.network ||
     filters.discipler ||
     filters.leader ||
@@ -186,6 +192,7 @@ export const AdminView = ({
   // Edição do evento
   const currentEvent = events.find(e => e.id === selectedEventId) || events[0] || { name: '', price: 0, date: '', location: '' };
   const [isCreatingEvent, setIsCreatingEvent] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   const [eventName, setEventName] = useState(currentEvent.name || '');
   const [eventPrice, setEventPrice] = useState(currentEvent.price || 0);
   const [eventDate, setEventDate] = useState(currentEvent.date || '');
@@ -323,7 +330,7 @@ export const AdminView = ({
           }}
         >
           <Users size={15} />
-          <span>Inscritos ({registrations.length})</span>
+          <span>Inscritos ({stats.total})</span>
         </button>
 
         <button
@@ -402,6 +409,13 @@ export const AdminView = ({
       {activeTab === 'attendees' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           
+          <select className="form-select" value={filters.eventId} onChange={e => handleFilterChange('eventId', e.target.value)} aria-label="Evento">
+            <option value="">Todos os eventos</option>
+            {events.map(e => <option key={e.id} value={e.id}>
+              {e.name}{e.active === false ? ' (arquivado)' : ''} · {new Date(e.created_at).toLocaleDateString('pt-BR')}
+            </option>)}
+          </select>
+
           {/* Métricas Compactas */}
           <div style={{
             display: 'grid',
@@ -574,10 +588,6 @@ export const AdminView = ({
               gap: '8px'
             }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                <select className="form-select" value={filters.eventId} onChange={e => handleFilterChange('eventId', e.target.value)}>
-                  <option value="">Todos os Eventos</option>
-                  {events.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                </select>
                 <select
                   className="form-select"
                   value={filters.network}
@@ -792,24 +802,57 @@ export const AdminView = ({
             Selecione o evento do atendimento ou crie um novo. Cada evento tem seu próprio link de inscrição.
           </p>
           <div style={{ display: 'grid', gap: 10, marginBottom: 20 }}>
-            {events.map(event => <div key={event.id} style={{ border: '1px solid var(--border-glass)', padding: 12, borderRadius: 10 }}>
-              <div style={{ fontWeight: 700 }}>{event.name}</div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
-                <button type="button" className="btn-secondary" onClick={() => { setIsCreatingEvent(false); onSelectEvent(event.id); }}>Usar no atendimento</button>
-                <button type="button" className="btn-secondary" onClick={async () => {
-                  if (!event.share_token) return alert('Execute a migração supabase_schema.sql para gerar o link.');
-                  const link = `${window.location.origin}/e/${event.share_token}`;
-                  try { await navigator.clipboard.writeText(link); alert('Link do evento copiado.'); }
-                  catch (_) { window.prompt('Copie o link do evento:', link); }
-                }}>Copiar link exclusivo</button>
-                {event.share_token && <button type="button" className="btn-secondary" onClick={() => onManageLots?.(event)}>Lotes e foto</button>}
-              </div>
-            </div>)}
+            {[...events.filter(e => e.active !== false), ...(showArchived ? events.filter(e => e.active === false) : [])].map(event => {
+              const eventRegs = registrations.filter(r => r.event_id === event.id);
+              const paidCount = eventRegs.filter(r => r.payment_status === 'Confirmado' || r.payment_status === 'Pago').length;
+              const archived = event.active === false;
+              const selected = event.id === currentEvent.id;
+              return <div key={event.id} style={{ border: `1px solid ${selected ? 'var(--primary)' : 'var(--border-glass)'}`, padding: 12, borderRadius: 10, opacity: archived ? 0.75 : 1 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
+                  <div style={{ fontWeight: 700 }}>{event.name}</div>
+                  <span className="badge" style={{ background: archived ? 'rgba(148, 163, 184, 0.2)' : 'rgba(16, 185, 129, 0.2)', color: archived ? 'var(--text-muted)' : '#6ee7b7', whiteSpace: 'nowrap' }}>
+                    {archived ? 'Arquivado' : 'Inscrições abertas'}
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                  {[event.date, `${eventRegs.length} inscritos · ${paidCount} pagos`].filter(Boolean).join(' · ')}
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                  {!archived && <>
+                    <button type="button" className="btn-secondary" onClick={() => { setIsCreatingEvent(false); onSelectEvent(event.id); }}>{selected ? 'Em atendimento' : 'Usar no atendimento'}</button>
+                    <button type="button" className="btn-secondary" onClick={() => {
+                      setIsCreatingEvent(false); onSelectEvent(event.id);
+                      setTimeout(() => document.getElementById('event-edit-form')?.scrollIntoView({ behavior: 'smooth' }), 50);
+                    }}>Editar</button>
+                    <button type="button" className="btn-secondary" onClick={async () => {
+                      if (!event.share_token) return alert('Execute a migração supabase_schema.sql para gerar o link.');
+                      const link = `${window.location.origin}/e/${event.share_token}`;
+                      try { await navigator.clipboard.writeText(link); alert('Link do evento copiado.'); }
+                      catch (_) { window.prompt('Copie o link do evento:', link); }
+                    }}>Copiar link exclusivo</button>
+                    {event.share_token && <button type="button" className="btn-secondary" onClick={() => onManageLots?.(event)}>Lotes e foto</button>}
+                  </>}
+                  <button type="button" className="btn-secondary" onClick={() => {
+                    if (archived) { onSetEventActive?.(event.id, true); return; }
+                    if (confirm(`Arquivar "${event.name}"?\n\nO link para de aceitar inscrições. Inscritos, pagamentos e check-in continuam guardados como histórico.`)) onSetEventActive?.(event.id, false);
+                  }}>{archived ? 'Reabrir inscrições' : 'Arquivar'}</button>
+                  <button type="button" className="btn-secondary" style={{ color: '#f87171', borderColor: 'rgba(239, 68, 68, 0.35)' }} onClick={() => {
+                    const warning = `Apagar "${event.name}" e as ${eventRegs.length} inscrições dele?\n\nIsso não pode ser desfeito.`;
+                    if (!confirm(warning)) return;
+                    if (paidCount > 0 && window.prompt(`Este evento tem ${paidCount} inscrições PAGAS. Se quer só guardar como histórico, use Arquivar.\n\nPara apagar mesmo assim, digite APAGAR:`)?.trim().toUpperCase() !== 'APAGAR') return;
+                    onDeleteEvent?.(event.id);
+                  }}><Trash2 size={15} /> Apagar</button>
+                </div>
+              </div>;
+            })}
+            {events.some(e => e.active === false) && <button type="button" className="btn-skip-action" style={{ border: 'none', background: 'transparent' }} onClick={() => setShowArchived(v => !v)}>
+              {showArchived ? 'Esconder arquivados' : `Ver arquivados (${events.filter(e => e.active === false).length})`}
+            </button>}
             <button type="button" className="btn-primary" onClick={onNewEvent}><Plus size={18} /> Novo evento</button>
           </div>
 
           {currentEvent.id && <>
-          <h4 style={{ marginBottom: 12 }}>{`Editar: ${currentEvent.name || 'evento'}`}</h4>
+          <h4 id="event-edit-form" style={{ marginBottom: 12 }}>{`Editar: ${currentEvent.name || 'evento'}`}</h4>
 
           <form onSubmit={handleSaveEvent} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <div className="form-group">
