@@ -30,6 +30,8 @@ import {
   copyOrShareWhatsApp
 } from '../lib/exportUtils';
 import { ListsManager } from './ListsManager';
+import { EventsManager } from './EventsManager';
+import { EventEditor } from './EventEditor';
 import { syncLocalToCloud, getSupabaseConfig } from '../lib/supabase';
 
 export const AdminView = ({
@@ -47,16 +49,14 @@ export const AdminView = ({
   onDeleteNetwork,
   onAddDiscipler,
   onDeleteDiscipler,
-  onAddEvent,
   leaders = [],
   onAddLeader,
   onDeleteLeader,
   selectedEventId,
   onSelectEvent,
-  onManageLots,
   onSetEventActive,
+  onReload,
   onDeleteEvent,
-  onNewEvent,
   onSignOut
 }) => {
   const [activeTab, setActiveTab] = useState('attendees'); // 'attendees' | 'event' | 'lists' | 'database'
@@ -189,43 +189,11 @@ export const AdminView = ({
     }
   };
 
-  // Edição do evento
-  const currentEvent = events.find(e => e.id === selectedEventId) || events[0] || { name: '', price: 0, date: '', location: '' };
-  const [isCreatingEvent, setIsCreatingEvent] = useState(false);
-  const [showArchived, setShowArchived] = useState(false);
-  const [eventName, setEventName] = useState(currentEvent.name || '');
-  const [eventPrice, setEventPrice] = useState(currentEvent.price || 0);
-  const [eventDate, setEventDate] = useState(currentEvent.date || '');
-  const [eventLocation, setEventLocation] = useState(currentEvent.location || '');
-  const [isSavingEvent, setIsSavingEvent] = useState(false);
-
-  useEffect(() => {
-    if (isCreatingEvent) return;
-    setEventName(currentEvent.name || '');
-    setEventPrice(currentEvent.price ?? 0);
-    setEventDate(currentEvent.date || '');
-    setEventLocation(currentEvent.location || '');
-  }, [currentEvent.id, isCreatingEvent]);
-
-  const handleSaveEvent = async (e) => {
-    e.preventDefault();
-    setIsSavingEvent(true);
-    try {
-      const saved = await onAddEvent({
-        id: isCreatingEvent ? undefined : currentEvent.id,
-        name: eventName.trim(),
-        price: parseFloat(eventPrice) || 0,
-        date: eventDate.trim(),
-        location: eventLocation.trim(),
-        active: true
-      });
-      setIsCreatingEvent(false);
-      alert(`Evento "${saved.name}" salvo com sucesso!`);
-    } catch (err) {
-      alert(`Erro ao salvar evento: ${err.message}`);
-    } finally {
-      setIsSavingEvent(false);
-    }
+  // Área de eventos: null = lista; 'new' = criando; objeto = editando
+  const [editingEvent, setEditingEvent] = useState(null);
+  const showAttendeesOf = (eventId) => {
+    setFilters((prev) => ({ ...prev, eventId }));
+    setActiveTab('attendees');
   };
 
   return (
@@ -353,7 +321,7 @@ export const AdminView = ({
           }}
         >
           <Calendar size={15} />
-          <span>Evento & Valor</span>
+          <span>Eventos</span>
         </button>
 
         <button
@@ -793,130 +761,13 @@ export const AdminView = ({
       {/* ========================================================= */}
       {/* ABA 2: CONFIGURAR EVENTO & VALOR                          */}
       {/* ========================================================= */}
-      {activeTab === 'event' && (
-        <div className="glass-card">
-          <h4 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#fff', marginBottom: '4px' }}>
-            Eventos
-          </h4>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
-            Selecione o evento do atendimento ou crie um novo. Cada evento tem seu próprio link de inscrição.
-          </p>
-          <div style={{ display: 'grid', gap: 10, marginBottom: 20 }}>
-            {[...events.filter(e => e.active !== false), ...(showArchived ? events.filter(e => e.active === false) : [])].map(event => {
-              const eventRegs = registrations.filter(r => r.event_id === event.id);
-              const paidCount = eventRegs.filter(r => r.payment_status === 'Confirmado' || r.payment_status === 'Pago').length;
-              const archived = event.active === false;
-              const selected = event.id === currentEvent.id;
-              return <div key={event.id} style={{ border: `1px solid ${selected ? 'var(--primary)' : 'var(--border-glass)'}`, padding: 12, borderRadius: 10, opacity: archived ? 0.75 : 1 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
-                  <div style={{ fontWeight: 700 }}>{event.name}</div>
-                  <span className="badge" style={{ background: archived ? 'rgba(148, 163, 184, 0.2)' : 'rgba(16, 185, 129, 0.2)', color: archived ? 'var(--text-muted)' : '#6ee7b7', whiteSpace: 'nowrap' }}>
-                    {archived ? 'Arquivado' : 'Inscrições abertas'}
-                  </span>
-                </div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 4 }}>
-                  {[event.date, `${eventRegs.length} inscritos · ${paidCount} pagos`].filter(Boolean).join(' · ')}
-                </div>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
-                  {!archived && <>
-                    <button type="button" className="btn-secondary" onClick={() => { setIsCreatingEvent(false); onSelectEvent(event.id); }}>{selected ? 'Em atendimento' : 'Usar no atendimento'}</button>
-                    <button type="button" className="btn-secondary" onClick={() => {
-                      setIsCreatingEvent(false); onSelectEvent(event.id);
-                      setTimeout(() => document.getElementById('event-edit-form')?.scrollIntoView({ behavior: 'smooth' }), 50);
-                    }}>Editar</button>
-                    <button type="button" className="btn-secondary" onClick={async () => {
-                      if (!event.share_token) return alert('Execute a migração supabase_schema.sql para gerar o link.');
-                      const link = `${window.location.origin}/e/${event.share_token}`;
-                      try { await navigator.clipboard.writeText(link); alert('Link do evento copiado.'); }
-                      catch (_) { window.prompt('Copie o link do evento:', link); }
-                    }}>Copiar link exclusivo</button>
-                    {event.share_token && <button type="button" className="btn-secondary" onClick={() => onManageLots?.(event)}>Lotes e foto</button>}
-                  </>}
-                  <button type="button" className="btn-secondary" onClick={() => {
-                    if (archived) { onSetEventActive?.(event.id, true); return; }
-                    if (confirm(`Arquivar "${event.name}"?\n\nO link para de aceitar inscrições. Inscritos, pagamentos e check-in continuam guardados como histórico.`)) onSetEventActive?.(event.id, false);
-                  }}>{archived ? 'Reabrir inscrições' : 'Arquivar'}</button>
-                  <button type="button" className="btn-secondary" style={{ color: '#f87171', borderColor: 'rgba(239, 68, 68, 0.35)' }} onClick={() => {
-                    const warning = `Apagar "${event.name}" e as ${eventRegs.length} inscrições dele?\n\nIsso não pode ser desfeito.`;
-                    if (!confirm(warning)) return;
-                    if (paidCount > 0 && window.prompt(`Este evento tem ${paidCount} inscrições PAGAS. Se quer só guardar como histórico, use Arquivar.\n\nPara apagar mesmo assim, digite APAGAR:`)?.trim().toUpperCase() !== 'APAGAR') return;
-                    onDeleteEvent?.(event.id);
-                  }}><Trash2 size={15} /> Apagar</button>
-                </div>
-              </div>;
-            })}
-            {events.some(e => e.active === false) && <button type="button" className="btn-skip-action" style={{ border: 'none', background: 'transparent' }} onClick={() => setShowArchived(v => !v)}>
-              {showArchived ? 'Esconder arquivados' : `Ver arquivados (${events.filter(e => e.active === false).length})`}
-            </button>}
-            <button type="button" className="btn-primary" onClick={onNewEvent}><Plus size={18} /> Novo evento</button>
-          </div>
-
-          {currentEvent.id && <>
-          <h4 id="event-edit-form" style={{ marginBottom: 12 }}>{`Editar: ${currentEvent.name || 'evento'}`}</h4>
-
-          <form onSubmit={handleSaveEvent} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <div className="form-group">
-              <label className="form-label">Nome do Evento *</label>
-              <input
-                type="text"
-                className="form-input"
-                value={eventName}
-                onChange={(e) => setEventName(e.target.value)}
-                required
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">
-                <span>Valor da Inscrição (R$) *</span>
-                <span style={{ color: '#34d399', fontWeight: 700 }}>
-                  {Number(eventPrice) === 0 ? 'Gratuito' : `R$ ${Number(eventPrice).toFixed(2)}`}
-                </span>
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                className="form-input"
-                value={eventPrice}
-                onChange={(e) => setEventPrice(e.target.value)}
-                required
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Data</label>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="Ex: 14 a 16 de Novembro"
-                value={eventDate}
-                onChange={(e) => setEventDate(e.target.value)}
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Local</label>
-              <input
-                type="text"
-                className="form-input"
-                placeholder="Ex: Auditório Principal"
-                value={eventLocation}
-                onChange={(e) => setEventLocation(e.target.value)}
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="btn-primary"
-              disabled={isSavingEvent}
-            >
-              <Save size={18} />
-              <span>{isSavingEvent ? 'Salvando...' : isCreatingEvent ? 'Criar evento' : 'Salvar alterações'}</span>
-            </button>
-          </form>
-          </>}
-        </div>
+      {activeTab === 'event' && (editingEvent
+        ? <EventEditor key={editingEvent === 'new' ? 'new' : editingEvent.id} event={editingEvent === 'new' ? null : editingEvent}
+            onClose={() => setEditingEvent(null)}
+            onSaved={async (id) => { await onReload(); onSelectEvent(id); setEditingEvent(null); }} />
+        : <EventsManager events={events} registrations={registrations} selectedEventId={selectedEventId}
+            onSelectEvent={onSelectEvent} onEdit={(event) => setEditingEvent(event || 'new')}
+            onShowAttendees={showAttendeesOf} onSetEventActive={onSetEventActive} onDeleteEvent={onDeleteEvent} />
       )}
 
       {/* ========================================================= */}
