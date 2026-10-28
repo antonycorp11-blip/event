@@ -18,6 +18,7 @@ import {
 import { prepareEventBanner } from './lib/eventImage';
 import { loadMyTokens, saveMyTokens } from './lib/myRegistrations';
 import { MyRegistrations, FindRegistration } from './components/MyRegistrations';
+import { ChatRegistration } from './components/ChatRegistration';
 import { CheckInPage } from './components/CheckInPage';
 import confetti from 'canvas-confetti';
 
@@ -349,12 +350,12 @@ function SharedEventPage({ token = sharedToken }) {
             onChanged={() => loadMine().catch(() => {})}
             onNew={() => { refreshEvent(); setView('form'); }} />
         : <>
-          <RegistrationForm
-            key={bundle.event.id}
-            events={[bundle.event]} networks={bundle.networks} disciplers={bundle.disciplers} leaders={bundle.leaders}
+          <ChatRegistration
+            key={`${bundle.event.id}-${myTokens.length}`}
+            event={bundle.event} networks={bundle.networks} disciplers={bundle.disciplers} leaders={bundle.leaders}
             ticketLots={bundle.ticket_lots || []} hasTicketLots={Boolean(bundle.has_ticket_lots)}
             onRefreshAvailability={refreshEvent}
-            publicMode defaults={lastAnswers} onSubmit={async reg => {
+            defaults={lastAnswers} onSubmit={async reg => {
               const saved = await registerPublic(token, reg);
               setLastAnswers({ network: reg.network, discipler: reg.discipler, leader: reg.leader, phone: reg.phone });
               remember([saved.access_token]);
@@ -362,9 +363,11 @@ function SharedEventPage({ token = sharedToken }) {
               refreshEvent();
               return saved;
             }}
+            footer={<div style={{ display: 'grid', gap: 8, marginTop: 12, textAlign: 'center' }}>
+              {myRegs.length > 0 && <button type="button" className="btn-secondary" onClick={() => setView('mine')}>Ver minhas inscrições</button>}
+              {finder}
+            </div>}
           />
-          {myRegs.length > 0 && <button type="button" className="btn-secondary" style={{ display: 'block', margin: '12px auto' }} onClick={() => setView('mine')}>Ver minhas inscrições</button>}
-          <div style={{ textAlign: 'center' }}>{finder}</div>
         </>}
     </main>
   </div>;
