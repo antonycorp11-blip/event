@@ -79,7 +79,10 @@ export function ChatRegistration({
     const timer = setTimeout(() => {
       setTyping(false);
       setLog(prev => [...prev, { from: 'bot', text: questions[step], hint: hints[step], step }]);
-      const prefill = { name: answers.name, birth: answers.birth, leader: answers.leader, phone: answers.phone }[step];
+      const prefill = {
+        name: answers.name, birth: answers.birth, leader: answers.leader, phone: answers.phone,
+        network: answers.network || defaults?.network, discipler: answers.discipler || defaults?.discipler,
+      }[step];
       setDraft(prefill || '');
       setTimeout(() => inputRef.current?.focus(), 50);
     }, log.length ? 450 : 250);
@@ -149,14 +152,14 @@ export function ChatRegistration({
   </div>;
 
   const options = step === 'who' ? [['Para mim', () => reply({ forOther: false }, 'Para mim')], ['Para outra pessoa', () => reply({ forOther: true }, 'Para outra pessoa')]]
-    : step === 'network' && networks.length ? networks.map(n => [n.name, () => reply({ network: n.name }, n.name), n.name === defaults?.network])
-    : step === 'discipler' && disciplers.length ? disciplers.map(d => [d.name, () => reply({ discipler: d.name }, d.name), d.name === defaults?.discipler])
     : step === 'leader' ? [
       ...(defaults?.leader ? [[defaults.leader, () => reply({ leader: defaults.leader }, defaults.leader), true]] : []),
       ['Não tenho / pular', () => reply({ leader: '' }, 'Sem líder')],
     ]
     : step === 'phone' && !phoneRequired ? [['Pular', () => reply({ phone: '' }, 'Sem WhatsApp')]]
     : null;
+  // Rede e discipulador: caixa de seleção com as opções cadastradas pela equipe.
+  const selectList = step === 'network' && networks.length ? networks : step === 'discipler' && disciplers.length ? disciplers : null;
   const textInput = ['name', 'birth', 'leader', 'phone'].includes(step)
     || (step === 'network' && !networks.length) || (step === 'discipler' && !disciplers.length);
 
@@ -199,6 +202,17 @@ export function ChatRegistration({
         {label}
       </button>)}
     </div>}
+
+    {!typing && selectList && <form className="chat-input" onSubmit={e => {
+      e.preventDefault();
+      if (draft) reply({ [step]: draft }, draft);
+    }}>
+      <select value={draft} onChange={e => setDraft(e.target.value)} aria-label={questions[step]}>
+        <option value="">{step === 'network' ? 'Selecione a rede' : 'Selecione o discipulador'}</option>
+        {selectList.map(item => <option key={item.id} value={item.name}>{item.name}</option>)}
+      </select>
+      <button type="submit" aria-label="Enviar" disabled={!draft}><Send size={18} /></button>
+    </form>}
 
     {!typing && textInput && <form className="chat-input" onSubmit={submitText}>
       <input ref={inputRef} value={draft} list={step === 'leader' ? 'chat-leaders' : undefined}

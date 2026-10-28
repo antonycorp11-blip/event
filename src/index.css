@@ -992,3 +992,10 @@ body {
   .chat-bubble, .chat-options, .chat-summary { animation: none; }
   .chat-typing span { animation: none; }
 }
+.chat-input select {
+  flex: 1; min-width: 0;
+  background: var(--bg-input); color: var(--text-main);
+  border: 1.5px solid var(--border-glass); border-radius: var(--radius-full);
+  padding: 13px 18px; font: inherit; font-size: 1rem;
+}
+.chat-input select:focus { outline: none; border-color: var(--border-focus); }
