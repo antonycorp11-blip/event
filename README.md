@@ -4,7 +4,7 @@ Aplicativo React/Vite com dados no Supabase. A equipe usa a raiz `/`; cada event
 
 ## Colocar inscrições no ar
 
-1. Abra o app e toque em **Criar acesso** com seu e-mail e senha. Não há confirmação por e-mail nem código: o primeiro e-mail cadastrado vira o administrador, e depois disso ninguém mais consegue se tornar administrador.
+1. Entre no app com o e-mail e a senha que o dono do sistema criou para a sua igreja na aba **Contas**.
 2. No painel, cadastre redes, discipuladores e líderes na aba de listas. Eles aparecem automaticamente no formulário de inscrição de todos os eventos.
 3. Na aba de eventos, crie o evento e use **Lotes e foto** para definir lotes de ingressos (o próximo lote começa quando o anterior esgota) e a foto horizontal. Copie o link exclusivo e compartilhe; quem se inscreve não precisa de login.
 
