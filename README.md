@@ -10,6 +10,12 @@ Aplicativo React/Vite com dados no Supabase. A equipe usa a raiz `/`; cada event
 
 As alterações de banco já foram aplicadas no projeto Supabase `ojfnqcajbhvlqtprrfxg`. Configure `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` no deploy e nunca publique uma chave `service_role` no navegador.
 
+## Várias igrejas (organizações)
+
+Cada igreja ou rede é uma organização: eventos, inscritos, redes, discipuladores, líderes, InfiniteTag e chave Pix são só dela, e o banco bloqueia o acesso de uma à outra (políticas por `org_id`). Execute `supabase_orgs.sql` depois de `supabase_pix.sql`: os dados atuais viram a primeira organização e o administrador atual vira o dono do sistema.
+
+O dono vê a aba **Contas** no painel: cria o acesso de um pastor (nome da igreja, e-mail, senha provisória e prazo), liga e testa a InfiniteTag, define a chave Pix manual e o WhatsApp de comprovante, e acompanha os eventos e inscritos de cada igreja. O login do app não tem mais "Criar acesso"; um acesso vencido ou desativado não entra no painel.
+
 ## Pix automático (InfinitePay), ingresso e check-in
 
 Quem se inscreve pelo link toca em **Pagar com Pix**, paga na página segura da InfinitePay e volta para o link. O banco consulta a própria InfinitePay (`payment_check`) antes de confirmar, e o ingresso com QR Code aparece na mesma tela. Se a pessoa fechar a página antes de voltar, o aviso automático da InfinitePay (`/api/pix-webhook`) confirma do mesmo jeito. O Pix cai na hora na conta InfinitePay.

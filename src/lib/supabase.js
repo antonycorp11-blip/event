@@ -208,3 +208,34 @@ export const deleteEventWithRegistrations = async (id) => {
   result(await client().from('registrations').delete().eq('event_id', id));
   result(await client().from('events').delete().eq('id', id));
 };
+
+// Acesso do login atual: organização, validade e se é o dono do sistema.
+// null = sem sessão.
+export const getAccess = async () => {
+  const { data, error } = await client().auth.getSession();
+  if (error || !data.session) return null;
+  return result(await client().rpc('my_access'));
+};
+export const changeMyPassword = async (password) => {
+  const { error } = await client().auth.updateUser({ password });
+  if (error) throw new Error(error.message);
+};
+
+// ===== Área do dono do sistema =====
+export const ownerListOrgs = async () => result(await client().rpc('owner_list_orgs')) || [];
+// Cria o login do pastor sem trocar a sessão do dono e liga esse login a uma nova organização.
+export const ownerCreateAccount = async ({ name, email, password, accessUntil }) => {
+  const temp = createClient(config.url, config.anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'owner-create-account' }
+  });
+  const { error } = await temp.auth.signUp({ email: email.trim(), password });
+  if (error && !/already registered/i.test(error.message)) throw new Error(error.message);
+  return result(await client().rpc('owner_create_org', { p_name: name, p_admin_email: email, p_access_until: accessUntil || null }));
+};
+export const ownerUpdateOrg = async (org) => result(await client().rpc('owner_update_org', {
+  p_org: org.id, p_name: org.name, p_infinitepay_handle: org.infinitepay_handle || '',
+  p_customer_email: org.customer_email || '', p_pix_minutes: Number(org.pix_minutes) || 60,
+  p_pix_key: org.pix_key || '', p_receipt_whatsapp: org.receipt_whatsapp || '',
+  p_access_until: org.access_until || null, p_active: org.active !== false
+}));
+export const ownerTestInfinitePay = async (handle) => result(await client().rpc('owner_test_infinitepay', { p_handle: handle }));

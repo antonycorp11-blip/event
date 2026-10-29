@@ -20,6 +20,7 @@ import {
   CloudUpload,
   RefreshCw,
   MessageSquareShare,
+  KeyRound,
   X
 } from 'lucide-react';
 import {
@@ -32,6 +33,7 @@ import {
 import { ListsManager } from './ListsManager';
 import { EventsManager } from './EventsManager';
 import { EventEditor } from './EventEditor';
+import { OwnerPanel } from './OwnerPanel';
 import { syncLocalToCloud, getSupabaseConfig } from '../lib/supabase';
 
 export const AdminView = ({
@@ -57,7 +59,9 @@ export const AdminView = ({
   onSetEventActive,
   onReload,
   onDeleteEvent,
-  onSignOut
+  onSignOut,
+  access = null,
+  onChangePassword
 }) => {
   const [activeTab, setActiveTab] = useState('attendees'); // 'attendees' | 'event' | 'lists' | 'database'
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
@@ -231,8 +235,15 @@ export const AdminView = ({
           <span>Voltar</span>
         </button>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           <button type="button" className="btn-refresh-pill" onClick={onSignOut}>Sair</button>
+          <button type="button" className="btn-refresh-pill" onClick={async () => {
+            const password = window.prompt('Nova senha (mínimo 6 caracteres):');
+            if (password === null) return;
+            if (password.trim().length < 6) { alert('A senha precisa ter pelo menos 6 caracteres.'); return; }
+            try { await onChangePassword(password.trim()); alert('Senha alterada.'); }
+            catch (err) { alert(`Não foi possível trocar a senha: ${err.message}`); }
+          }}>Senha</button>
           {/* Botão de Atualizar Manual para PWA */}
           <button
             type="button"
@@ -245,7 +256,7 @@ export const AdminView = ({
             <span>{isRefreshing ? '...' : 'Atualizar'}</span>
           </button>
 
-          <button
+          {access?.super && <button
             type="button"
             onClick={handleSyncLocal}
             disabled={isSyncing}
@@ -266,7 +277,7 @@ export const AdminView = ({
           >
             <CloudUpload size={13} />
             <span>{isSyncing ? '...' : 'Recuperar'}</span>
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -347,6 +358,29 @@ export const AdminView = ({
           <span>Listas</span>
         </button>
 
+{access?.super && <>
+        <button
+          type="button"
+          onClick={() => setActiveTab('owner')}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '9px 14px',
+            borderRadius: 'var(--radius-full)',
+            border: '1px solid',
+            borderColor: activeTab === 'owner' ? 'var(--primary)' : 'var(--border-subtle)',
+            background: activeTab === 'owner' ? 'rgba(99, 102, 241, 0.25)' : 'rgba(15, 23, 42, 0.7)',
+            color: activeTab === 'owner' ? '#fff' : 'var(--text-muted)',
+            fontWeight: 700,
+            fontSize: '0.84rem',
+            cursor: 'pointer',
+            whiteSpace: 'nowrap'
+          }}
+        >
+          <KeyRound size={15} />
+          <span>Contas</span>
+        </button>
         <button
           type="button"
           onClick={() => setActiveTab('database')}
@@ -369,6 +403,7 @@ export const AdminView = ({
           <Database size={15} />
           <span>Supabase</span>
         </button>
+        </>}
       </div>
 
       {/* ========================================================= */}
@@ -773,6 +808,8 @@ export const AdminView = ({
       {/* ========================================================= */}
       {/* ABA 3: REDES & DISCIPULADORES                             */}
       {/* ========================================================= */}
+      {activeTab === 'owner' && access?.super && <OwnerPanel />}
+
       {activeTab === 'lists' && (
         <ListsManager
           networks={networks}

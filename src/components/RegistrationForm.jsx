@@ -41,6 +41,7 @@ export const RegistrationForm = ({
   hasTicketLots = false,
   publicMode = false,
   defaults = null,
+  pixKey = '',
   onSubmit,
   onRefreshAvailability,
   onConfirmPaymentStatus
@@ -309,7 +310,7 @@ export const RegistrationForm = ({
                 Copie a chave e cole no app do seu banco
               </p>
 
-              <PixKeyBox />
+              <PixKeyBox pixKey={pixKey} />
 
               {/* Valor a Pagar */}
               <div style={{

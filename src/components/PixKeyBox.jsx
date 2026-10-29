@@ -1,23 +1,27 @@
 import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 
-export const PIX_KEY = '05902198127';
-export const RECEIPT_WHATSAPP = '5565992786131';
-export const RECEIPT_WHATSAPP_LABEL = '(65) 99278-6131';
+// Telefone com DDD (só dígitos) -> (65) 99278-6131
+export const formatPhone = digits => {
+  const d = String(digits || '').replace(/\D/g, '').replace(/^55(?=\d{10,11}$)/, '');
+  return d.length >= 10 ? `(${d.slice(0, 2)}) ${d.slice(2, -4)}-${d.slice(-4)}` : d;
+};
 
 export async function copyText(text, label) {
   try { await navigator.clipboard.writeText(text); return true; }
   catch (_) { window.prompt(label, text); return false; }
 }
 
-export function PixKeyBox() {
+// Chave Pix manual da igreja (organização), usada quando não há Pix automático.
+export function PixKeyBox({ pixKey }) {
   const [copied, setCopied] = useState(false);
+  if (!pixKey) return <p style={{ color: 'var(--text-muted)', margin: '16px 0' }}>A chave Pix da igreja ainda não foi cadastrada. Fale com a organização do evento.</p>;
   const copy = async () => {
-    if (await copyText(PIX_KEY, 'Copie a chave PIX:')) { setCopied(true); setTimeout(() => setCopied(false), 2500); }
+    if (await copyText(pixKey, 'Copie a chave PIX:')) { setCopied(true); setTimeout(() => setCopied(false), 2500); }
   };
   return <div style={{ display: 'grid', gap: 10, margin: '16px 0' }}>
     <div style={{ color: 'var(--text-muted)', fontSize: '0.84rem' }}>Chave PIX</div>
-    <div style={{ fontSize: '1.5rem', fontWeight: 800, letterSpacing: '0.04em', color: '#fff' }}>{PIX_KEY}</div>
+    <div style={{ fontSize: '1.5rem', fontWeight: 800, letterSpacing: '0.04em', color: '#fff', overflowWrap: 'anywhere' }}>{pixKey}</div>
     <button type="button" className="btn-primary" onClick={copy}>{copied ? 'Chave copiada!' : 'Copiar chave PIX'}</button>
   </div>;
 }

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { CheckCircle2, Clock, Download, Search, Share2, Ticket, XCircle } from 'lucide-react';
 import { startGroupPayment } from '../lib/supabase';
-import { PixKeyBox, QrImage, RECEIPT_WHATSAPP, RECEIPT_WHATSAPP_LABEL } from './PixKeyBox';
+import { PixKeyBox, QrImage, formatPhone } from './PixKeyBox';
 
 const money = value => `R$ ${Number(value || 0).toFixed(2).replace('.', ',')}`;
 const ticketUrl = code => new URL(`/c/${code}`, window.location.origin).toString();
@@ -99,22 +99,26 @@ function TicketCard({ registration }) {
   </div>;
 }
 
-function ManualPix({ registrations }) {
+function ManualPix({ registrations, organization }) {
   const total = registrations.reduce((sum, r) => sum + Number(r.ticket_price || 0), 0);
   const names = registrations.map(r => r.name).join(', ');
+  const whatsapp = String(organization?.receipt_whatsapp || '').replace(/\D/g, '');
+  const waNumber = whatsapp.length === 10 || whatsapp.length === 11 ? `55${whatsapp}` : whatsapp;
   return <div style={{ textAlign: 'center' }}>
     <p>Faça o PIX de <strong style={{ color: '#34d399' }}>{money(total)}</strong>:</p>
-    <PixKeyBox />
-    <p style={{ color: 'var(--text-muted)' }}>Depois envie o comprovante no WhatsApp <strong>{RECEIPT_WHATSAPP_LABEL}</strong>. A equipe confirma e os ingressos aparecem aqui.</p>
-    <a className="btn-primary" style={{ marginTop: 12, display: 'block', textAlign: 'center', textDecoration: 'none', background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)' }}
-      href={`https://wa.me/${RECEIPT_WHATSAPP}?text=${encodeURIComponent(`Olá! Segue o comprovante do PIX de ${money(total)} da inscrição de ${names} no evento ${registrations[0].event_name}.`)}`}
-      target="_blank" rel="noreferrer">Enviar comprovante no WhatsApp</a>
+    <PixKeyBox pixKey={organization?.pix_key} />
+    {whatsapp ? <>
+      <p style={{ color: 'var(--text-muted)' }}>Depois envie o comprovante no WhatsApp <strong>{formatPhone(whatsapp)}</strong>. A equipe confirma e os ingressos aparecem aqui.</p>
+      <a className="btn-primary" style={{ marginTop: 12, display: 'block', textAlign: 'center', textDecoration: 'none', background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)' }}
+        href={`https://wa.me/${waNumber}?text=${encodeURIComponent(`Olá! Segue o comprovante do PIX de ${money(total)} da inscrição de ${names} no evento ${registrations[0].event_name}.`)}`}
+        target="_blank" rel="noreferrer">Enviar comprovante no WhatsApp</a>
+    </> : <p style={{ color: 'var(--text-muted)' }}>Depois envie o comprovante para a organização do evento. A equipe confirma e os ingressos aparecem aqui.</p>}
   </div>;
 }
 
 // Um pagamento para um grupo de inscrições: as que já têm link (pagar agora) ou as
 // ainda sem link, que viram um único Pix quando a pessoa toca em pagar.
-function PaymentBox({ registrations, onChanged }) {
+function PaymentBox({ registrations, organization, onChanged }) {
   const [manual, setManual] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -124,7 +128,7 @@ function PaymentBox({ registrations, onChanged }) {
   const now = useNow(Number.isFinite(expires));
   const left = expires - now;
 
-  if (manual) return <ManualPix registrations={registrations} />;
+  if (manual) return <ManualPix registrations={registrations} organization={organization} />;
   if (left <= 0) return <p style={{ textAlign: 'center', color: '#fca5a5' }}>O prazo para pagar acabou. Se você já pagou, aguarde alguns instantes; senão, faça uma nova inscrição.</p>;
 
   const pay = async () => {
@@ -180,7 +184,7 @@ function RegistrationCard({ registration }) {
 
 const awaitingPix = r => r.payment_status === 'Pendente' && r.payment_method === 'PIX' && Number(r.ticket_price) > 0;
 
-export function MyRegistrations({ registrations, onNew, onChanged, finder }) {
+export function MyRegistrations({ registrations, organization, onNew, onChanged, finder }) {
   // Agrupa as pendentes por link de pagamento; as ainda sem link formam um único Pix.
   const groups = [];
   registrations.filter(awaitingPix).forEach(r => {
@@ -194,7 +198,7 @@ export function MyRegistrations({ registrations, onNew, onChanged, finder }) {
       <div className="step-label"><Ticket size={15} /><span>{groups.length ? 'Pagamento pendente' : 'Seus ingressos'}</span></div>
       <h2 className="step-title">{registrations.length > 1 ? 'Suas inscrições' : 'Sua inscrição'}</h2>
     </div>
-    {groups.map(g => <PaymentBox key={g.key} registrations={g.items} onChanged={onChanged} />)}
+    {groups.map(g => <PaymentBox key={g.key} registrations={g.items} organization={organization} onChanged={onChanged} />)}
     {registrations.map(registration => <RegistrationCard key={registration.id} registration={registration} />)}
     <button type="button" className="btn-secondary" onClick={onNew}>+ Inscrever outra pessoa</button>
     {unpaidWithoutLink && <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', marginTop: -8 }}>
